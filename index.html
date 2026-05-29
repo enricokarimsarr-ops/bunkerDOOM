@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEC 7: Aurelia Cement - Survival Edition</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #d5dbdb;
+            font-family: 'Courier New', Courier, monospace;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+            user-select: none;
+        }
+        h1 {
+            margin-bottom: 10px;
+            color: #ca6f1e;
+            text-shadow: 3px 3px 5px #000;
+            letter-spacing: 2px;
+        }
+        #canvas-container {
+            position: relative;
+            display: inline-block;
+            border: 4px solid #424949;
+            box-shadow: 0 0 35px rgba(202, 111, 30, 0.3);
+            cursor: pointer;
+        }
+        canvas {
+            display: block;
+            background: #000;
+        }
+        #ui {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 92%;
+            display: flex;
+            justify-content: space-between;
+            font-size: 20px;
+            font-weight: bold;
+            color: #f39c12;
+            text-shadow: 2px 2px #000;
+            pointer-events: none;
+            background: rgba(20, 20, 20, 0.75);
+            padding: 8px 15px;
+            border-radius: 4px;
+            border: 1px solid #5d6d7e;
+        }
+        .instructions {
+            margin-top: 15px;
+            color: #95a5a6;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        span {
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>SEC 7: AURELIA CEMENT</h1>
+    
+    <div id="canvas-container">
+        <canvas id="gameCanvas" width="640" height="480"></canvas>
+        <div id="ui">
+            <div>INTEGRITÀ: <span id="health">100</span>%</div>
+            <div>RIVETTI: <span id="ammo">20</span></div>
+            <div>DRONI ABBATTUTI: <span id="score">0</span></div>
+        </div>
+    </div>
+
+    <div class="instructions">
+        <strong>[SISTEMA AUTOMATICO DI CONTROLLO INFESTAZIONE]</strong><br>
+        1. Clicca sull'area di gioco per agganciare il mirino e avviare i motori audio industriali.<br>
+        <strong>MOVIMENTO:</strong> Tasti <strong>W, A, S, D</strong> | <strong>ROTAZIONE:</strong> Muovi il mouse<br>
+        <strong>FUOCO SPECIFICO:</strong> Click sinistro del mouse o Barra Spaziatrice
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const container = document.getElementById('canvas-container');
+const ctx = canvas.getContext('2d');
+const width = canvas.width;
+const height = canvas.height;
+
+// ==========================================
+// AUDIO ENGINE (CONSERVA IL RITMO HEAVY METAL)
+// ==========================================
+let audioCtx = null;
+let musicInterval = null;
+let masterGain = null;
+let distortionNode = null;
+
+function makeDistortionCurve(amount) {
+    let k = typeof amount === 'number' ? amount : 50;
+    let n_samples = 44100;
+    let curve = new Float32Array(n_samples);
+    let deg = Math.PI / 180;
+    for (let i = 0 ; i < n_samples; ++i ) {
+        let x = (i * 2) / n_samples - 1;
+        curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
+    }
+    return curve;
+}
+
+function initAudio() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    masterGain = audioCtx.createGain();
+    masterGain.gain.setValueAtTime(1.0, audioCtx.currentTime);
+    masterGain.connect(audioCtx.destination);
+    
+    distortionNode = audioCtx.createWaveShaper();
+    distortionNode.curve = makeDistortionCurve(140);
+    distortionNode.oversampling = '4x';
+    distortionNode.connect(masterGain);
+    
+    startDoomSoundtrack();
+}
+
+function startDoomSoundtrack() {
+    if (musicInterval) clearInterval(musicInterval);
+    const riff = [41.20, 41.20, 0, 41.20, 41.20, 48.99, 41.20, 55.00, 41.20, 41.20, 0, 41.20, 46.25, 41.20, 38.89, 36.71];
+    let step = 0;
+    musicInterval = setInterval(() => {
+        if (gameOver || !audioCtx) return;
+        let currentNote = riff[step % riff.length];
+        let subStep = step % 16;
+        if (currentNote > 0) {
+            playHeavyTone(currentNote, 0.14, 'sawtooth', 0.50);
+            playTone(currentNote * 0.5, 0.16, 'triangle', 0.80);
+        }
+        if (subStep === 0 || subStep === 4 || subStep === 8 || subStep === 12) playKickDrum();
+        if (subStep === 4 || subStep === 12) playSnareDrum();
+        step++;
+    }, 135);
+}
+
+function playHeavyTone(freq, duration, type, volume) {
+    if (!audioCtx) return;
+    try {
+        let osc = audioCtx.createOscillator();
+        let gainNode = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gainNode); gainNode.connect(distortionNode);
+        osc.start(); osc.stop(audioCtx.currentTime + duration);
+    } catch(e) {}
+}
+
+function playTone(freq, duration, type, volume) {
+    if (!audioCtx) return;
+    try {
+        let osc = audioCtx.createOscillator();
+        let gainNode = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gainNode); gainNode.connect(masterGain);
+        osc.start(); osc.stop(audioCtx.currentTime + duration);
+    } catch(e) {}
+}
+
+function playKickDrum() {
+    try {
+        let osc = audioCtx.createOscillator();
+        let gainNode = audioCtx.createGain();
+        osc.type = 'sine'; osc.frequency.setValueAtTime(160, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.15);
+        gainNode.gain.setValueAtTime(0.8, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+        osc.connect(gainNode); gainNode.connect(masterGain);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+    } catch(e) {}
+}
+
+function playSnareDrum() {
+    try {
+        let osc = audioCtx.createOscillator();
+        let gainNode = audioCtx.createGain();
+        osc.type = 'square'; osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(60, audioCtx.currentTime + 0.1);
+        gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+        osc.connect(gainNode); gainNode.connect(distortionNode);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+    } catch(e) {}
+}
+
+function playShootSound() {
+    if (!audioCtx) return;
+    try {
+        let osc1 = audioCtx.createOscillator();
+        let osc2 = audioCtx.createOscillator();
+        let gainNode = audioCtx.createGain();
+        osc1.type = 'sawtooth'; osc1.frequency.setValueAtTime(450, audioCtx.currentTime);
+        osc1.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.3);
+        osc2.type = 'triangle'; osc2.frequency.setValueAtTime(180, audioCtx.currentTime);
+        osc2.frequency.linearRampToValueAtTime(10, audioCtx.currentTime + 0.3);
+        gainNode.gain.setValueAtTime(0.9, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+        osc1.connect(gainNode); osc2.connect(gainNode); gainNode.connect(masterGain);
+        osc1.start(); osc2.start(); osc1.stop(audioCtx.currentTime + 0.3); osc2.stop(audioCtx.currentTime + 0.3);
+    } catch(e) {}
+}
+
+function playDryClickSound() {
+    if (!audioCtx) return;
+    try {
+        let osc = audioCtx.createOscillator();
+        let gainNode = audioCtx.createGain();
+        osc.type = 'triangle'; osc.frequency.setValueAtTime(90, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+        osc.connect(gainNode); gainNode.connect(masterGain);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+    } catch(e) {}
+}
+
+function playItemSound() {
+    if (!audioCtx) return;
+    try {
+        let osc = audioCtx.createOscillator();
+        let gainNode = audioCtx.createGain();
+        osc.type = 'sine'; osc.frequency.setValueAtTime(260, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(520, audioCtx.currentTime + 0.08);
+        gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+        osc.connect(gainNode); gainNode.connect(masterGain);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.25);
+    } catch(e) {}
+}
+
+function playKillSound() {
+    if (!audioCtx) return;
+    try {
+        let osc = audioCtx.createOscillator();
+        let gainNode = audioCtx.createGain();
+        osc.type = 'square'; osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(20, audioCtx.currentTime + 0.4);
+        gainNode.gain.setValueAtTime(0.7, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+        osc.connect(gainNode); gainNode.connect(distortionNode);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.4);
+    } catch(e) {}
+}
+
+function playDeathSound() {
+    if (!audioCtx) return;
+    try {
+        let osc = audioCtx.createOscillator();
+        let gainNode = audioCtx.createGain();
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(80, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(5, audioCtx.currentTime + 1.8);
+        gainNode.gain.setValueAtTime(0.9, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 1.8);
+        osc.connect(gainNode); gainNode.connect(masterGain);
+        osc.start(); osc.stop(audioCtx.currentTime + 1.8);
+    } catch(e) {}
+}
+
+// ==========================================
+// STRUTTURA E LOGICA DEL LABIRINTO
+// ==========================================
+const map = [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1], 
+    [1,0,1,1,1,1,0,1,1,1,1,1,1,0,1,1],
+    [1,0,1,0,0,0,0,1,0,0,0,0,1,0,0,1],
+    [1,0,1,0,1,1,1,1,0,1,1,0,1,1,0,1],
+    [1,0,0,0,1,0,0,0,0,0,1,0,0,1,0,1],
+    [1,1,1,0,1,1,0,1,1,0,1,1,0,1,0,1],
+    [1,0,0,0,0,0,0,1,0,0,0,0,0,1,0,1],
+    [1,0,1,1,1,1,1,1,1,1,1,1,0,1,0,1],
+    [1,0,1,0,0,0,0,0,0,0,0,1,0,0,0,1],
+    [1,0,1,0,1,1,1,1,1,1,0,1,1,1,0,1],
+    [1,0,0,0,1,0,0,0,0,1,0,0,0,1,0,1],
+    [1,1,1,0,1,0,1,1,0,1,1,1,0,1,0,1],
+    [1,0,0,0,1,0,1,0,0,0,0,1,0,0,0,1],
+    [1,0,1,1,1,0,1,1,1,1,0,1,1,1,0,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+];
+
+let player = { x: 1.5, y: 1.5, dirX: 1.0, dirY: 0.0, planeX: 0.0, planeY: 0.66, health: 100, score: 0, ammo: 20 };
+let enemies = [
+    { x: 14.5, y: 1.5, alive: true, speed: 0.024, hitFrame: 0 },
+    { x: 8.5,  y: 5.5, alive: true, speed: 0.020, hitFrame: 0 },
+    { x: 13.5, y: 13.5, alive: true, speed: 0.028, hitFrame: 0 }
+];
+let items = [
+    { x: 4.5, y: 1.5, type: 'medkit', active: true },
+    { x: 1.5, y: 13.5, type: 'ammo', active: true },
+    { x: 9.5, y: 9.5, type: 'medkit', active: true },
+    { x: 14.5, y: 7.5, type: 'ammo', active: true }
+];
+
+let keys = {};
+let isShooting = false;
+let shootTimer = 0;
+let gameOver = false;
+let zBuffer = new Array(width);
+let mouseSensitivity = 0.0025;
+let globalAnimTime = 0;
+
+container.addEventListener('click', () => {
+    initAudio(); 
+    if (!gameOver) canvas.requestPointerLock();
+});
+
+document.addEventListener('mousemove', e => {
+    if (document.pointerLockElement === canvas && !gameOver) {
+        let mouseX = e.movementX;
+        let rotSpeed = mouseX * mouseSensitivity;
+        let oldDirX = player.dirX;
+        player.dirX = player.dirX * Math.cos(rotSpeed) - player.dirY * Math.sin(rotSpeed);
+        player.dirY = oldDirX * Math.sin(rotSpeed) + player.dirY * Math.cos(rotSpeed);
+        let oldPlaneX = player.planeX;
+        player.planeX = player.planeX * Math.cos(rotSpeed) - player.planeY * Math.sin(rotSpeed);
+        player.planeY = oldPlaneX * Math.sin(rotSpeed) + player.planeY * Math.cos(rotSpeed);
+    }
+});
+
+window.addEventListener('keydown', e => {
+    keys[e.key.toLowerCase()] = true;
+    if (e.key === ' ' || e.key === 'Spacebar') shoot();
+    if (gameOver && e.key.toLowerCase() === 'r') resetGame();
+});
+window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+window.addEventListener('mousedown', e => {
+    if (document.pointerLockElement === canvas && e.button === 0) shoot();
+});
+
+function shoot() {
+    if (isShooting || gameOver) return;
+    if (player.ammo <= 0) { playDryClickSound(); return; }
+
+    player.ammo--;
+    document.getElementById('ammo').innerText = player.ammo;
+    isShooting = true; shootTimer = 6; 
+    playShootSound(); 
+
+    enemies.forEach(enemy => {
+        if (!enemy.alive) return;
+        let spriteX = enemy.x - player.x;
+        let spriteY = enemy.y - player.y;
+        let invDet = 1.0 / (player.planeX * player.dirY - player.dirX * player.planeY);
+        let transformX = invDet * (player.dirY * spriteX - player.dirX * spriteY);
+        let transformY = invDet * (-player.planeY * spriteX + player.planeX * spriteY);
+
+        if (transformY > 0) {
+            let spriteScreenX = Math.floor((width / 2) * (1 + transformX / transformY));
+            if (Math.abs(spriteScreenX - width / 2) < 55 && transformY < zBuffer[width / 2]) {
+                enemy.alive = false;
+                player.score++;
+                document.getElementById('score').innerText = player.score;
+                playKillSound(); 
+
+                setTimeout(() => {
+                    if (gameOver) return;
+                    enemy.alive = true;
+                    let spawned = false;
+                    while(!spawned) {
+                        let rx = Math.floor(Math.random() * 14) + 1;
+                        let ry = Math.floor(Math.random() * 14) + 1;
+                        if(map[ry][rx] === 0 && Math.abs(rx - player.x) > 2) {
+                            enemy.x = rx + 0.5; enemy.y = ry + 0.5; spawned = true;
+                        }
+                    }
+                }, 4000);
+            }
+        }
+    });
+}
+
+function respawnItem(item) {
+    setTimeout(() => {
+        if (gameOver) return;
+        let spawned = false;
+        while(!spawned) {
+            let rx = Math.floor(Math.random() * 14) + 1;
+            let ry = Math.floor(Math.random() * 14) + 1;
+            if (map[ry][rx] === 0) {
+                item.x = rx + 0.5; item.y = ry + 0.5; item.active = true; spawned = true;
+            }
+        }
+    }, 6000);
+}
+
+function resetGame() {
+    player.health = 100; player.score = 0; player.ammo = 20;
+    player.x = 1.5; player.y = 1.5; player.dirX = 1.0; player.dirY = 0.0; player.planeX = 0.0; player.planeY = 0.66;
+    enemies[0].x = 14.5; enemies[0].y = 1.5; enemies[0].alive = true;
+    enemies[1].x = 8.5;  enemies[1].y = 5.5; enemies[1].alive = true;
+    enemies[2].x = 13.5; enemies[2].y = 13.5; enemies[2].alive = true;
+    items.forEach((item, index) => {
+        item.active = true;
+        if(index === 0) { item.x = 4.5; item.y = 1.5; }
+        if(index === 1) { item.x = 1.5; item.y = 13.5; }
+        if(index === 2) { item.x = 9.5; item.y = 9.5; }
+        if(index === 3) { item.x = 14.5; item.y = 7.5; }
+    });
+    gameOver = false;
+    document.getElementById('health').innerText = 100;
+    document.getElementById('score').innerText = 0;
+    document.getElementById('ammo').innerText = 20;
+    canvas.requestPointerLock();
+    update();
+}
+
+function update() {
+    if (gameOver) return;
+    globalAnimTime += 0.08;
+
+    let moveSpeed = 0.05;
+    let strafeX = -player.dirY;
+    let strafeY = player.dirX;
+
+    if (keys['w']) {
+        let nextX = player.x + player.dirX * moveSpeed; let nextY = player.y + player.dirY * moveSpeed;
+        if (map[Math.floor(player.y)][Math.floor(nextX)] === 0) player.x = nextX;
+        if (map[Math.floor(nextY)][Math.floor(player.x)] === 0) player.y = nextY;
+    }
+    if (keys['s']) {
+        let nextX = player.x - player.dirX * moveSpeed; let nextY = player.y - player.dirY * moveSpeed;
+        if (map[Math.floor(player.y)][Math.floor(nextX)] === 0) player.x = nextX;
+        if (map[Math.floor(nextY)][Math.floor(player.x)] === 0) player.y = nextY;
+    }
+    if (keys['a']) {
+        let nextX = player.x - strafeX * moveSpeed; let nextY = player.y - strafeY * moveSpeed;
+        if (map[Math.floor(player.y)][Math.floor(nextX)] === 0) player.x = nextX;
+        if (map[Math.floor(nextY)][Math.floor(player.x)] === 0) player.y = nextY;
+    }
+    if (keys['d']) {
+        let nextX = player.x + strafeX * moveSpeed; let nextY = player.y + strafeY * moveSpeed;
+        if (map[Math.floor(player.y)][Math.floor(nextX)] === 0) player.x = nextX;
+        if (map[Math.floor(nextY)][Math.floor(player.x)] === 0) player.y = nextY;
+    }
+
+    enemies.forEach(enemy => {
+        if (!enemy.alive) return;
+        let dx = player.x - enemy.x; let dy = player.y - enemy.y;
+        let dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < 0.42) {
+            enemy.hitFrame = 1; player.health -= 0.9;
+            if (player.health <= 0) {
+                player.health = 0; gameOver = true; playDeathSound(); document.exitPointerLock();
+            }
+            document.getElementById('health').innerText = Math.floor(player.health);
+        } else {
+            enemy.hitFrame = 0;
+            if (dist < 12) { 
+                let stepX = (dx / dist) * enemy.speed; let stepY = (dy / dist) * enemy.speed;
+                if (map[Math.floor(enemy.y)][Math.floor(enemy.x + stepX)] === 0) enemy.x += stepX;
+                if (map[Math.floor(enemy.y + stepY)][Math.floor(enemy.x)] === 0) enemy.y += stepY;
+            }
+        }
+    });
+
+    items.forEach(item => {
+        if (!item.active) return;
+        let idx = player.x - item.x; let idy = player.y - item.y;
+        if (Math.sqrt(idx * idx + idy * idy) < 0.45) {
+            item.active = false; playItemSound();
+            if (item.type === 'medkit') {
+                player.health = Math.min(100, player.health + 30);
+            } else {
+                player.ammo += 12;
+            }
+            document.getElementById('health').innerText = Math.floor(player.health);
+            document.getElementById('ammo').innerText = player.ammo;
+            respawnItem(item);
+        }
+    });
+
+    if (isShooting) { shootTimer--; if (shootTimer <= 0) isShooting = false; }
+    render();
+    if (gameOver) drawGameOverScreen(); else requestAnimationFrame(update);
+}
+
+function render() {
+    // Soffitto e Pavimento Industriali (Grigi fumo e Asfalto rovinato)
+    ctx.fillStyle = '#252b30'; ctx.fillRect(0, 0, width, height / 2);
+    ctx.fillStyle = '#343a40'; ctx.fillRect(0, height / 2, width, height / 2);
+
+    // EFFETTO RAYCASTING: COSTRUZIONE BLOCCHI CEMENTO E RUGGINE PROCEDURALI
+    for (let x = 0; x < width; x++) {
+        let cameraX = 2 * x / width - 1; 
+        let rayDirX = player.dirX + player.planeX * cameraX;
+        let rayDirY = player.dirY + player.planeY * cameraX;
+        let mapX = Math.floor(player.x); let mapY = Math.floor(player.y);
+        let sideDistX, sideDistY;
+        let deltaDistX = (rayDirX === 0) ? Infinity : Math.abs(1 / rayDirX);
+        let deltaDistY = (rayDirY === 0) ? Infinity : Math.abs(1 / rayDirY);
+        let perpWallDist, stepX, stepY, hit = 0, side;
+
+        if (rayDirX < 0) { stepX = -1; sideDistX = (player.x - mapX) * deltaDistX; }
+        else             { stepX = 1; sideDistX = (mapX + 1.0 - player.x) * deltaDistX; }
+        if (rayDirY < 0) { stepY = -1; sideDistY = (player.y - mapY) * deltaDistY; }
+        else             { stepY = 1; sideDistY = (mapY + 1.0 - player.y) * deltaDistY; }
+
+        while (hit === 0) {
+            if (sideDistX < sideDistY) { sideDistX += deltaDistX; mapX += stepX; side = 0; }
+            else                       { sideDistY += deltaDistY; mapY += stepY; side = 1; }
+            if (map[mapY][mapX] > 0) hit = 1;
+        }
+
+        if (side === 0) perpWallDist = (sideDistX - deltaDistX);
+        else            perpWallDist = (sideDistY - deltaDistY);
+        zBuffer[x] = perpWallDist;
+
+        let lineHeight = Math.floor(height / perpWallDist);
+        let drawStart = Math.max(0, -lineHeight / 2 + height / 2);
+        let drawEnd = Math.min(height - 1, lineHeight / 2 + height / 2);
+
+        // Calcolo coordinata esatta d'impatto sulla singola cella per calcolare la texture pixel art
+        let wallX = (side === 0) ? player.y + perpWallDist * rayDirY : player.x + perpWallDist * rayDirX;
+        wallX -= Math.floor(wallX);
+
+        // Creazione Sfumature e Crepe Procedurali (Look Cemento / Ruggine delle immagini)
+        let gradient = ctx.createLinearGradient(0, drawStart, 0, drawEnd);
+        
+        // Determiniamo se questo settore di muro ha piastre arrugginite (basato su coordinate di mappa)
+        if ((mapX + mapY) % 3 === 0 && wallX > 0.15 && wallX < 0.85) {
+            // Sezione Ruggine Scura (Portone/Pareti Bunker Sec 7)
+            let topColor = (side === 1) ? '#5e2c04' : '#7e3d09';
+            let botColor = (side === 1) ? '#3e1c02' : '#5e2c04';
+            gradient.addColorStop(0, topColor);
+            gradient.addColorStop(0.5, '#8e4c19'); // Venatura chiara ossidata
+            gradient.addColorStop(1, botColor);
+        } else {
+            // Sezione Cemento Minerale con crepe orizzontali (Aurelia Cement)
+            let baseConcrete = (side === 1) ? '#566573' : '#7ec0ee' && '#7f8c8d';
+            let darkConcrete = (side === 1) ? '#2c3e50' : '#43515f';
+            gradient.addColorStop(0, baseConcrete);
+            gradient.addColorStop(0.35, baseConcrete);
+            gradient.addColorStop(0.37, '#222222'); // Linea di blocco di cemento spezzata
+            gradient.addColorStop(0.40, baseConcrete);
+            gradient.addColorStop(0.70, baseConcrete);
+            gradient.addColorStop(0.72, '#2c3238'); // Seconda scanalatura strutturale
+            gradient.addColorStop(1, darkConcrete);
+        }
+
+        ctx.strokeStyle = gradient;
+        ctx.beginPath(); ctx.moveTo(x, drawStart); ctx.lineTo(x, drawEnd); ctx.stroke();
+    }
+
+    // GESTIONE SPRITE TRIDIMENSIONALI (DRONI E RISORSE DI GIOCO)
+    let sprites = [];
+    items.forEach(item => { if (item.active) sprites.push({ x: item.x, y: item.y, type: item.type }); });
+    enemies.forEach(enemy => { if (enemy.alive) sprites.push({ x: enemy.x, y: enemy.y, type: 'enemy', hitFrame: enemy.hitFrame }); });
+
+    sprites.sort((a, b) => {
+        let distA = ((player.x - a.x) * (player.x - a.x) + (player.y - a.y) * (player.y - a.y));
+        let distB = ((player.x - b.x) * (player.x - b.x) + (player.y - b.y) * (player.y - b.y));
+        return distB - distA;
+    });
+
+    sprites.forEach(sprite => {
+        let spriteX = sprite.x - player.x; let spriteY = sprite.y - player.y;
+        let invDet = 1.0 / (player.planeX * player.dirY - player.dirX * player.planeY);
+        let transformX = invDet * (player.dirY * spriteX - player.dirX * spriteY);
+        let transformY = invDet * (-player.planeY * spriteX + player.planeX * spriteY); 
+
+        if (transformY > 0) {
+            let spriteScreenX = Math.floor((width / 2) * (1 + transformX / transformY));
+            let bobbing = (sprite.type !== 'enemy') ? Math.sin(globalAnimTime * 1.8) * 10 : 0;
+            let droneSway = (sprite.type === 'enemy') ? Math.sin(globalAnimTime * 2.2) * 6 : 0;
+
+            let spriteHeight = Math.abs(Math.floor(height / transformY));
+            let drawStartY = Math.max(0, -spriteHeight / 2 + height / 2 + bobbing + droneSway);
+            let drawEndY = Math.min(height - 1, spriteHeight / 2 + height / 2 + bobbing + droneSway);
+
+            let spriteWidth = Math.abs(Math.floor(height / transformY));
+            let drawStartX = Math.max(0, Math.floor(-spriteWidth / 2 + spriteScreenX));
+            let drawEndX = Math.min(width - 1, Math.floor(spriteWidth / 2 + spriteScreenX));
+
+            let midY = (drawStartY + drawEndY) / 2;
+            let sHeight = drawEndY - drawStartY;
+
+            for (let stripe = drawStartX; stripe < drawEndX; stripe++) {
+                if (transformY < zBuffer[stripe]) {
+                    let relX = (stripe - drawStartX) / spriteWidth;
+
+                    if (sprite.type === 'enemy') {
+                        // DRONE MECCANICO CORAZZATO SEC 7
+                        ctx.fillStyle = (sprite.hitFrame === 1) ? '#ff4d4d' : '#4d5656'; // Rosso se attacca, grigio acciaio normalmente
+                        
+                        // Scudo sferico corazzato centrale
+                        if (relX > 0.28 && relX < 0.72) {
+                            ctx.fillRect(stripe, drawStartY + sHeight * 0.2, 1, sHeight * 0.6);
+                        }
+                        // Strisce di sbarramento stradale / Pericolo Gialle e Nere (Pura estetica industriale)
+                        if (relX > 0.35 && relX < 0.65 && Math.floor(stripe / 4) % 2 === 0 && sprite.hitFrame !== 1) {
+                            ctx.fillStyle = '#d4ac0d'; // Giallo industriale opaco
+                            ctx.fillRect(stripe, drawStartY + sHeight * 0.3, 1, sHeight * 0.4);
+                        }
+                        // Faro / Sensore Rosso Centrale pulsante (Preso dal Bunker SEC 7)
+                        if (stripe > spriteScreenX - 5 && stripe < spriteScreenX + 5) {
+                            ctx.fillStyle = (Math.sin(globalAnimTime * 5) > 0) ? '#ff0000' : '#900c3f';
+                            ctx.fillRect(stripe, drawStartY + sHeight * 0.42, 1, sHeight * 0.15);
+                        }
+                        // Bracci di supporto magnetici inferiori
+                        if ((relX > 0.18 && relX < 0.28) || (relX > 0.72 && relX < 0.82)) {
+                            ctx.fillStyle = '#2c3e50';
+                            ctx.fillRect(stripe, midY, 1, sHeight * 0.3);
+                        }
+                    } 
+                    else if (sprite.type === 'medkit') {
+                        // KIT MEDICO DI EMERGENZA TRIDIMENSIONALE (Valigetta Bianca con Croce Rossa)
+                        if (relX > 0.44 && relX < 0.56) {
+                            ctx.fillStyle = '#2c3e50'; // Maniglia superiore scura
+                            ctx.fillRect(stripe, midY - sHeight * 0.24, 1, sHeight * 0.05);
+                        }
+                        if (relX > 0.28 && relX < 0.72) {
+                            // Finto shading 3D a colonne (Sfumatura pixel-art)
+                            if (relX < 0.34 || relX > 0.66) {
+                                ctx.fillStyle = '#d5dbdb'; // Lati esterni in ombra grigia
+                            } else {
+                                ctx.fillStyle = '#ffffff'; // Parte frontale bianca illuminata
+                            }
+                            ctx.fillRect(stripe, midY - sHeight * 0.19, 1, sHeight * 0.38);
+
+                            // Logica di disegno della Croce Rossa a colonne
+                            let vCross = (relX > 0.46 && relX < 0.54);
+                            let hCross = (relX > 0.38 && relX < 0.62);
+                            ctx.fillStyle = '#e74c3c'; // Rosso brillante
+
+                            if (vCross) {
+                                ctx.fillRect(stripe, midY - sHeight * 0.12, 1, sHeight * 0.24);
+                            } else if (hCross) {
+                                ctx.fillRect(stripe, midY - sHeight * 0.04, 1, sHeight * 0.08);
+                            }
+                        }
+                    } 
+                    else if (sprite.type === 'ammo') {
+                        // CASSA DI MUNIZIONI MILITARE AVANZATA (Acciaio con dettagli oro/giallo pericolo)
+                        if (relX > 0.24 && relX < 0.76) {
+                            // Finto shading 3D a colonne per la cassa metallica
+                            if (relX < 0.30 || relX > 0.70) {
+                                ctx.fillStyle = '#1b2631'; // Angoli rinforzati neri d'acciaio balistico
+                            } else {
+                                ctx.fillStyle = '#2e4053'; // Metallo centrale grigio/azzurro cupo
+                            }
+                            ctx.fillRect(stripe, midY - sHeight * 0.16, 1, sHeight * 0.32);
+
+                            // Banda orizzontale gialla sul fondo (Segnale pericolo munizioni)
+                            if (relX > 0.30 && relX < 0.70) {
+                                ctx.fillStyle = '#f1c40f';
+                                ctx.fillRect(stripe, midY + sHeight * 0.09, 1, sHeight * 0.04);
+                            }
+
+                            // Icona Munizioni al centro (Fascia di 3 grandi rivetti pesanti dorati)
+                            if (relX > 0.40 && relX < 0.60) {
+                                ctx.fillStyle = '#f39c12'; // Ottone/Oro lucido
+                                if (Math.floor(stripe / 3) % 2 === 0) {
+                                    ctx.fillRect(stripe, midY - Math.floor(sHeight * 0.06), 1, Math.floor(sHeight * 0.13));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    drawWeapon();
+    drawMinimap();
+}
+
+function drawWeapon() {
+    ctx.save();
+    // Bocca di fuoco e bagliore modificati per un fucile a chiodi/rivetti artigianale
+    if (isShooting) {
+        // Vampa dello sparo industriale espansa
+        ctx.fillStyle = 'rgba(230, 126, 34, 0.9)';
+        ctx.beginPath(); ctx.arc(width / 2, height - 130, 50, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#f9e79f';
+        ctx.beginPath(); ctx.arc(width / 2, height - 130, 20, 0, Math.PI * 2); ctx.fill();
+
+        // Canna rinforzata in ferro scuro
+        ctx.fillStyle = '#2e4053'; ctx.fillRect(width / 2 - 20, height - 90, 40, 95);
+        ctx.fillStyle = '#1a252f'; ctx.fillRect(width / 2 - 10, height - 120, 20, 45);
+    } else {
+        // Arma a riposo: Fucile di rottame arrugginito (Scrap Rifle)
+        ctx.fillStyle = '#5d6d7e'; ctx.fillRect(width / 2 - 16, height - 110, 32, 110);
+        // Piastre esterne arrugginite applicate sopra
+        ctx.fillStyle = '#78281f'; ctx.fillRect(width / 2 - 20, height - 70, 4, 70);
+        ctx.fillRect(width / 2 + 16, height - 70, 4, 70);
+        // Canna principale d'acciaio
+        ctx.fillStyle = '#2c3e50'; ctx.fillRect(width / 2 - 7, height - 130, 14, 45); 
+    }
+
+    // Mirino tattico a croce semplificato sul canvas
+    ctx.strokeStyle = 'rgba(243, 156, 18, 0.4)';
+    ctx.lineWidth = 2; ctx.beginPath();
+    ctx.moveTo(width / 2 - 10, height / 2); ctx.lineTo(width / 2 + 10, height / 2);
+    ctx.moveTo(width / 2, height / 2 - 10); ctx.lineTo(width / 2, height / 2 + 10);
+    ctx.stroke(); ctx.restore();
+}
+
+function drawMinimap() {
+    let size = 6; 
+    ctx.fillStyle = 'rgba(26, 26, 26, 0.7)';
+    ctx.fillRect(10, 10, map[0].length * size, map.length * size);
+
+    for (let y = 0; y < map.length; y++) {
+        for (let x = 0; x < map[y].length; x++) {
+            if (map[y][x] > 0) {
+                ctx.fillStyle = '#566573'; // Muri grigio cemento sulla minimappa
+                ctx.fillRect(10 + x * size, 10 + y * size, size - 1, size - 1);
+            }
+        }
+    }
+
+    ctx.fillStyle = '#e67e22'; // Giocatore: Punto arancione ruggine
+    ctx.fillRect(10 + Math.floor(player.x * size) - 1, 10 + Math.floor(player.y * size) - 1, 3, 3);
+
+    ctx.fillStyle = '#ff4d4d'; // Droni nemici: Punti rossi
+    enemies.forEach(e => {
+        if (e.alive) ctx.fillRect(10 + Math.floor(e.x * size) - 1, 10 + Math.floor(e.y * size) - 1, 3, 3);
+    });
+
+    ctx.fillStyle = '#27ae60'; // Risorse superstiti: Punti verdi
+    items.forEach(i => {
+        if (i.active) ctx.fillRect(10 + Math.floor(i.x * size) - 1, 10 + Math.floor(i.y * size) - 1, 2, 2);
+    });
+}
+
+function drawGameOverScreen() {
+    ctx.fillStyle = 'rgba(15, 15, 15, 0.9)';
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = '#78281f';
+    ctx.font = "bold 40px 'Courier New'"; ctx.textAlign = "center";
+    ctx.fillText("CONNESSIONE INTERROTTA", width / 2, height / 2 - 20);
+    ctx.fillStyle = '#d5dbdb';
+    ctx.font = "18px 'Courier New'";
+    ctx.fillText("Struttura compromessa. Premi 'R' per riavviare il drone", width / 2, height / 2 + 30);
+}
+
+update();
+</script>
+</body>
+</html>
