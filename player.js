@@ -3,6 +3,7 @@
 // ==========================================
 
 // Le statistiche e la posizione iniziale del nostro protagonista nel livello 1
+// MODIFICATO: Risorse ridotte per la modalità Survival + Nuova variabile Shield (Scudo)
 let player = { 
     x: 1.5, 
     y: 1.5, 
@@ -10,9 +11,10 @@ let player = {
     dirY: 0.0, 
     planeX: 0.0, 
     planeY: 0.66, 
-    health: 100, 
+    health: 70,     // Partenza Survival: 70 di vita anziché 100
+    shield: 0,      // NUOVO: Lo scudo parte a 0% e assorbirà i danni
     score: 0, 
-    ammo: 20 
+    ammo: 10        // Partenza Survival: 10 Rivetti anziché 20
 };
 
 // Variabili per tracciare i tasti premuti e la sensibilità del mouse
