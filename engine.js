@@ -1,5 +1,5 @@
 // ==========================================
-// MOTORE GRAFICO, FISICA E LOGICA DI GIOCO
+// MOTORE GRAFICO, FISICA E LOGICA DI GIOCO (SURVIVAL EDITION)
 // ==========================================
 
 const canvas = document.getElementById('gameCanvas');
@@ -14,13 +14,17 @@ let shootTimer = 0;
 let gameOver = false;
 let globalAnimTime = 0;
 
+// Variabili globali per la meccanica delle chiavi dell'ascensore
+window.isElevatorLocked = true;
+window.keyDropped = false;
+
 // Avvio del gioco con click
 container.addEventListener('click', () => {
     if (typeof initAudio === 'function') initAudio(); 
     if (!gameOver) canvas.requestPointerLock();
 });
 
-// Gestione dello sparo
+// Gestione dello sparo e del riavvio
 window.addEventListener('keydown', e => {
     if (e.key === ' ' || e.key === 'Spacebar') shoot();
     if (gameOver && e.key.toLowerCase() === 'r') resetGame();
@@ -49,9 +53,9 @@ function shoot() {
 
         if (transformY > 0) {
             let spriteScreenX = Math.floor((width / 2) * (1 + transformX / transformY));
-            // Hitbox
+            // Controllo Hitbox del colpo
             if (Math.abs(spriteScreenX - width / 2) < 55 && transformY < zBuffer[width / 2]) {
-                enemy.health -= 1; // Infligge 1 danno
+                enemy.health -= 1; // Infligge 1 danno di rivetto
                 
                 if (enemy.health <= 0) {
                     enemy.alive = false;
@@ -59,8 +63,14 @@ function shoot() {
                     document.getElementById('score').innerText = player.score;
                     if(typeof playKillSound === 'function') playKillSound(); 
                     
-                    // Se non è il boss, respawna dopo 4 secondi
-                    if (enemy.type !== 'boss') {
+                    // LOGICA CHIAVE: Se tutti i nemici correnti sono a terra e non è ancora nata la chiave, falla droppare!
+                    if (!window.keyDropped && enemies.filter(e => e.alive).length === 0) {
+                        items.push({ x: enemy.x, y: enemy.y, type: 'key', active: true });
+                        window.keyDropped = true;
+                    }
+                    
+                    // Se non è il boss o la regina, respawna dopo 4 secondi per mantenere l'adrenalina
+                    if (enemy.type !== 'boss' && enemy.type !== 'queen') {
                         setTimeout(() => {
                             if (gameOver) return;
                             enemy.alive = true;
@@ -83,9 +93,11 @@ function shoot() {
 
 function resetGame() {
     gameOver = false;
-    player.health = 100; 
+    // MODIFICATO: Valori iniziali di avvio in modalità Survival rigorosa
+    player.health = 70; 
+    player.shield = 0;  
+    player.ammo = 10;
     player.score = 0; 
-    player.ammo = 20;
     player.x = 1.5; 
     player.y = 1.5; 
     player.dirX = 1.0; 
@@ -93,38 +105,61 @@ function resetGame() {
     player.planeX = 0.0; 
     player.planeY = 0.66;
     
-    // Riparti dal livello 1
+    window.isElevatorLocked = true;
+    window.keyDropped = false;
+    
     if(typeof LoadCorporateLevel === 'function') LoadCorporateLevel(1);
     if(typeof LoadLevelSprites === 'function') LoadLevelSprites(1);
 
-    document.getElementById('health').innerText = 100;
+    document.getElementById('health').innerText = 70;
     document.getElementById('score').innerText = 0;
-    document.getElementById('ammo').innerText = 20;
+    document.getElementById('ammo').innerText = 10;
+    
+    let shieldUI = document.getElementById('shield');
+    if (shieldUI) shieldUI.innerText = 0;
+
     canvas.requestPointerLock();
     update();
 }
 
-// LOOP PRINCIPALE
+// LOOP PRINCIPALE DI FISICA E LOGICA
 function update() {
     if (gameOver) return;
     globalAnimTime += 0.08;
 
-    // CONTROLLO TRANSIZIONE LIVELLO (L'Ascensore)
+    // AGGIORNAMENTO DINAMICO INTERFACCIA SCUDO (Inietta la riga HTML se non presente)
+    let shieldEl = document.getElementById('shield');
+    if (!shieldEl) {
+        let uiDiv = document.getElementById('ui');
+        if (uiDiv) {
+            let newDiv = document.createElement('div');
+            newDiv.innerHTML = 'SCUDO: <span id="shield" style="color: #3498db;">0</span>%';
+            uiDiv.insertBefore(newDiv, uiDiv.children[1]);
+            shieldEl = document.getElementById('shield');
+        }
+    }
+    if (shieldEl) shieldEl.innerText = Math.floor(player.shield || 0);
+
+    // CONTROLLO TRANSIZIONE LIVELLO (L'Ascensore bloccato/sbloccato)
     let mapX = Math.floor(player.x);
     let mapY = Math.floor(player.y);
     if (map[mapY][mapX] === 9) {
-        if (currentLevel < 3) {
-            LoadCorporateLevel(currentLevel + 1);
-            LoadLevelSprites(currentLevel);
-            // Riposiziona il giocatore all'inizio del nuovo piano
-            player.x = 1.5; 
-            player.y = 1.5; 
+        if (window.isElevatorLocked) {
+            // Se l'ascensore è bloccato, impediamo il cambio di livello (la grafica gestirà il messaggio)
         } else {
-            // Hai vinto il gioco!
-            gameOver = true;
-            document.exitPointerLock();
-            drawVictoryScreen();
-            return;
+            if (currentLevel < 3) {
+                LoadCorporateLevel(currentLevel + 1);
+                LoadLevelSprites(currentLevel);
+                player.x = 1.5; 
+                player.y = 1.5;
+                window.isElevatorLocked = true; // Blocca l'ascensore del piano successivo
+                window.keyDropped = false;
+            } else {
+                gameOver = true;
+                document.exitPointerLock();
+                drawVictoryScreen();
+                return;
+            }
         }
     }
 
@@ -153,18 +188,32 @@ function update() {
         if (map[Math.floor(nextY)][Math.floor(player.x)] === 0 || map[Math.floor(nextY)][Math.floor(player.x)] === 9) player.y = nextY;
     }
 
-    // IA Nemici
+    // IA Nemici (Inclusa deviazione del danno sullo scudo corporeo)
     enemies.forEach(enemy => {
         if (!enemy.alive) return;
         let dx = player.x - enemy.x; let dy = player.y - enemy.y;
         let dist = Math.sqrt(dx * dx + dy * dy);
 
-        let attackRange = (enemy.type === 'boss') ? 0.6 : 0.42;
-        let damage = (enemy.type === 'boss') ? 2.0 : 0.9;
+        let isBossType = (enemy.type === 'boss' || enemy.type === 'queen');
+        let attackRange = isBossType ? 0.6 : 0.42;
+        let damage = isBossType ? 2.0 : 0.9;
 
         if (dist < attackRange) {
             enemy.hitFrame = 1; 
-            player.health -= damage;
+            
+            // APPLICAZIONE MECCANICA DELLO SCUDO CORPORREO
+            let finalDamage = damage;
+            if (player.shield > 0) {
+                if (player.shield >= finalDamage) {
+                    player.shield -= finalDamage;
+                    finalDamage = 0;
+                } else {
+                    finalDamage -= player.shield;
+                    player.shield = 0;
+                }
+            }
+            
+            player.health -= finalDamage;
             if (player.health <= 0) {
                 player.health = 0; 
                 gameOver = true; 
@@ -182,21 +231,32 @@ function update() {
         }
     });
 
-    // Risorse
+    // Risorse e Raccolta Oggetti (Aggiunti Faldoni e Chiavi)
     items.forEach(item => {
         if (!item.active) return;
         let idx = player.x - item.x; let idy = player.y - item.y;
         if (Math.sqrt(idx * idx + idy * idy) < 0.45) {
             item.active = false; 
             if(typeof playItemSound === 'function') playItemSound();
+            
             if (item.type === 'medkit') {
                 player.health = Math.min(100, player.health + 30);
-            } else {
+                document.getElementById('health').innerText = Math.floor(player.health);
+            } else if (item.type === 'ammo') {
                 player.ammo += 12;
+                document.getElementById('ammo').innerText = player.ammo;
+            } else if (item.type === 'folder') {
+                // Ricarica Scudo Faldone dell'Archivio
+                player.shield = Math.min(100, (player.shield || 0) + 25);
+            } else if (item.type === 'key') {
+                // Sblocco dell'ascensore tramite chiave dropped
+                window.isElevatorLocked = false;
             }
-            document.getElementById('health').innerText = Math.floor(player.health);
-            document.getElementById('ammo').innerText = player.ammo;
-            if(typeof respawnItem === 'function') respawnItem(item);
+            
+            // Fai rinascere l'oggetto se non si tratta della chiave unica di sblocco
+            if (item.type !== 'key' && typeof respawnItem === 'function') {
+                respawnItem(item);
+            }
         }
     });
 
@@ -207,7 +267,7 @@ function update() {
     else if (!gameOver) requestAnimationFrame(update);
 }
 
-// MOTORE DI RENDERING 3D (RAYCASTING)
+// MOTORE DI RENDERING 3D (RAYCASTING E DISEGNO SPRITE AVANZATO)
 function render() {
     ctx.fillStyle = '#252b30'; ctx.fillRect(0, 0, width, height / 2);
     ctx.fillStyle = '#343a40'; ctx.fillRect(0, height / 2, width, height / 2);
@@ -246,7 +306,7 @@ function render() {
 
         let gradient = ctx.createLinearGradient(0, drawStart, 0, drawEnd);
         
-        // Disegno Ascensore
+        // Disegno delle pareti dell'Ascensore (Blocco 9)
         if (map[mapY][mapX] === 9) {
             let topColor = (side === 1) ? '#117a65' : '#1abc9c';
             gradient.addColorStop(0, topColor);
@@ -274,7 +334,7 @@ function render() {
         ctx.beginPath(); ctx.moveTo(x, drawStart); ctx.lineTo(x, drawEnd); ctx.stroke();
     }
 
-    // RENDERING DEGLI SPRITE (Nemici e Oggetti)
+    // RENDERING DEGLI SPRITE TRIDIMENSIONALI COINVOLTI NEL RESTYLING
     let sprites = [];
     items.forEach(item => { if (item.active) sprites.push({ x: item.x, y: item.y, type: item.type }); });
     enemies.forEach(enemy => { if (enemy.alive) sprites.push({ x: enemy.x, y: enemy.y, type: enemy.type, hitFrame: enemy.hitFrame }); });
@@ -293,15 +353,18 @@ function render() {
 
         if (transformY > 0) {
             let spriteScreenX = Math.floor((width / 2) * (1 + transformX / transformY));
-            let bobbing = (sprite.type !== 'drone' && sprite.type !== 'boss') ? Math.sin(globalAnimTime * 1.8) * 10 : 0;
-            let droneSway = (sprite.type === 'drone' || sprite.type === 'boss') ? Math.sin(globalAnimTime * 2.2) * 6 : 0;
             
-            // Il boss è grande il doppio!
-            let scale = (sprite.type === 'boss') ? 2.0 : 1.0;
+            // Distinguiamo il dondolio di animazione dei nemici/oggetti
+            let isEnemyType = (sprite.type === 'drone' || sprite.type === 'zombie' || sprite.type === 'boss' || sprite.type === 'queen');
+            let bobbing = (!isEnemyType) ? Math.sin(globalAnimTime * 1.8) * 10 : 0;
+            let enemySway = (isEnemyType) ? Math.sin(globalAnimTime * 2.2) * 6 : 0;
+            
+            // Gestione scala (La Regina e il vecchio Boss raddoppiano la grandezza)
+            let scale = (sprite.type === 'boss' || sprite.type === 'queen') ? 2.0 : 1.0;
 
             let spriteHeight = Math.abs(Math.floor(height / transformY)) * scale;
-            let drawStartY = Math.max(0, -spriteHeight / 2 + height / 2 + bobbing + droneSway);
-            let drawEndY = Math.min(height - 1, spriteHeight / 2 + height / 2 + bobbing + droneSway);
+            let drawStartY = Math.max(0, -spriteHeight / 2 + height / 2 + bobbing + enemySway);
+            let drawEndY = Math.min(height - 1, spriteHeight / 2 + height / 2 + bobbing + enemySway);
 
             let spriteWidth = Math.abs(Math.floor(height / transformY)) * scale;
             let drawStartX = Math.max(0, Math.floor(-spriteWidth / 2 + spriteScreenX));
@@ -314,21 +377,103 @@ function render() {
                 if (transformY < zBuffer[stripe]) {
                     let relX = (stripe - drawStartX) / spriteWidth;
 
-                    if (sprite.type === 'drone' || sprite.type === 'boss') {
-                        ctx.fillStyle = (sprite.hitFrame === 1) ? '#ff4d4d' : (sprite.type === 'boss' ? '#17202a' : '#4d5656'); 
-                        
-                        if (relX > 0.28 && relX < 0.72) ctx.fillRect(stripe, drawStartY + sHeight * 0.2, 1, sHeight * 0.6);
-                        
-                        if (relX > 0.35 && relX < 0.65 && Math.floor(stripe / 4) % 2 === 0 && sprite.hitFrame !== 1) {
-                            ctx.fillStyle = (sprite.type === 'boss') ? '#e74c3c' : '#d4ac0d'; 
-                            ctx.fillRect(stripe, drawStartY + sHeight * 0.3, 1, sHeight * 0.4);
-                        }
-                        
-                        if (stripe > spriteScreenX - (5*scale) && stripe < spriteScreenX + (5*scale)) {
-                            ctx.fillStyle = (Math.sin(globalAnimTime * 5) > 0) ? '#ff0000' : '#900c3f';
-                            ctx.fillRect(stripe, drawStartY + sHeight * 0.42, 1, sHeight * 0.15);
+                    // 1. CODICE RENDERING: ZOMBIE DA UFFICIO (Ex Drone)
+                    if (sprite.type === 'zombie' || sprite.type === 'drone') {
+                        if (sprite.hitFrame === 1) {
+                            ctx.fillStyle = '#ff4d4d'; // Lampo rosso sangue quando azzanna
+                            ctx.fillRect(stripe, drawStartY + sHeight * 0.1, 1, sHeight * 0.8);
+                        } else {
+                            // Testa (Verde zombie decomposto)
+                            if (relX > 0.38 && relX < 0.62) {
+                                ctx.fillStyle = '#27ae60'; 
+                                ctx.fillRect(stripe, drawStartY + sHeight * 0.1, 1, sHeight * 0.2);
+                                // Occhi rossi iniettati di sangue
+                                ctx.fillStyle = '#e74c3c';
+                                ctx.fillRect(stripe, drawStartY + sHeight * 0.16, 1, sHeight * 0.04);
+                            }
+                            // Busto (Camicia bianca aziendale)
+                            if (relX > 0.25 && relX < 0.75) {
+                                ctx.fillStyle = '#ffffff'; 
+                                ctx.fillRect(stripe, drawStartY + sHeight * 0.3, 1, sHeight * 0.4);
+                                // Cravatta Rossa d'ordinanza
+                                if (relX > 0.46 && relX < 0.54) {
+                                    ctx.fillStyle = '#c0392b'; 
+                                    ctx.fillRect(stripe, drawStartY + sHeight * 0.35, 1, sHeight * 0.25);
+                                }
+                            }
+                            // Gambe (Pantaloni eleganti da ufficio)
+                            if (relX > 0.30 && relX < 0.70) {
+                                ctx.fillStyle = '#2c3e50'; 
+                                ctx.fillRect(stripe, drawStartY + sHeight * 0.7, 1, sHeight * 0.2);
+                            }
                         }
                     } 
+                    // 2. CODICE RENDERING: REGINA DEGLI ZOMBIE (Ex Boss)
+                    else if (sprite.type === 'queen' || sprite.type === 'boss') {
+                        if (sprite.hitFrame === 1) {
+                            ctx.fillStyle = '#ff3333'; 
+                            ctx.fillRect(stripe, drawStartY, 1, sHeight);
+                        } else {
+                            // Testa mostruosa gigante
+                            if (relX > 0.35 && relX < 0.65) {
+                                ctx.fillStyle = '#148f77'; // Carnagione putrefatta scura
+                                ctx.fillRect(stripe, drawStartY + sHeight * 0.05, 1, sHeight * 0.2);
+                                // Occhi giganti cremisi scintillanti
+                                if (relX > 0.40 && relX < 0.60) {
+                                    ctx.fillStyle = '#ff0000';
+                                    ctx.fillRect(stripe, drawStartY + sHeight * 0.10, 1, sHeight * 0.06);
+                                }
+                            }
+                            // Tailleur lacerato e stracciato (Dettagli fucsia/viola)
+                            if (relX > 0.20 && relX < 0.80) {
+                                ctx.fillStyle = (Math.floor(stripe / 3) % 2 === 0) ? '#ff00ff' : '#8e44ad'; 
+                                ctx.fillRect(stripe, drawStartY + sHeight * 0.25, 1, sHeight * 0.5);
+                                // Distintivo/Spilla aziendale in oro
+                                if (relX > 0.45 && relX < 0.55) {
+                                    ctx.fillStyle = '#f1c40f';
+                                    ctx.fillRect(stripe, drawStartY + sHeight * 0.3, 1, sHeight * 0.1);
+                                }
+                            }
+                            // Parte inferiore della gonna stracciata
+                            if (relX > 0.25 && relX < 0.75) {
+                                ctx.fillStyle = '#5b2c6f'; 
+                                ctx.fillRect(stripe, drawStartY + sHeight * 0.75, 1, sHeight * 0.2);
+                            }
+                        }
+                    }
+                    // 3. CODICE RENDERING: IL FALDONE DELL'ARCHIVIO (Nuovo Scudo)
+                    else if (sprite.type === 'folder') {
+                        if (relX > 0.30 && relX < 0.70) {
+                            ctx.fillStyle = '#2980b9'; // Struttura raccoglitore blu cobalto
+                            ctx.fillRect(stripe, midY - sHeight * 0.2, 1, sHeight * 0.4);
+                            // Etichetta bianca per i faldoni laterale
+                            if (relX > 0.35 && relX < 0.45) {
+                                ctx.fillStyle = '#ffffff';
+                                ctx.fillRect(stripe, midY - sHeight * 0.15, 1, sHeight * 0.3);
+                                // Foro circolare ad anelli
+                                ctx.fillStyle = '#000000';
+                                ctx.fillRect(stripe, midY + sHeight * 0.05, 1, sHeight * 0.03);
+                            }
+                        }
+                    }
+                    // 4. CODICE RENDERING: LA CHIAVE DORATA DELL'ASCENSORE
+                    else if (sprite.type === 'key') {
+                        if (relX > 0.40 && relX < 0.60) {
+                            ctx.fillStyle = '#f1c40f'; // Oro puro lucido
+                            // Impugnatura a cerchio della chiave
+                            ctx.fillRect(stripe, midY - sHeight * 0.15, 1, sHeight * 0.1);
+                            // Stelo della chiave
+                            if (relX > 0.46 && relX < 0.54) {
+                                ctx.fillRect(stripe, midY - sHeight * 0.05, 1, sHeight * 0.25);
+                            }
+                            // Dentini della serratura mappa
+                            if (relX > 0.52 && relX < 0.60) {
+                                ctx.fillRect(stripe, midY + sHeight * 0.1, 1, sHeight * 0.05);
+                                ctx.fillRect(stripe, midY + sHeight * 0.16, 1, sHeight * 0.05);
+                            }
+                        }
+                    }
+                    // Conservazione dei vecchi asset standard (Medkit e Ammo)
                     else if (sprite.type === 'medkit') {
                         if (relX > 0.44 && relX < 0.56) {
                             ctx.fillStyle = '#2c3e50';
@@ -337,7 +482,6 @@ function render() {
                         if (relX > 0.28 && relX < 0.72) {
                             ctx.fillStyle = (relX < 0.34 || relX > 0.66) ? '#d5dbdb' : '#ffffff';
                             ctx.fillRect(stripe, midY - sHeight * 0.19, 1, sHeight * 0.38);
-
                             let vCross = (relX > 0.46 && relX < 0.54);
                             let hCross = (relX > 0.38 && relX < 0.62);
                             ctx.fillStyle = '#e74c3c'; 
@@ -368,6 +512,24 @@ function render() {
 
     drawWeapon();
     drawMinimap();
+    
+    // INTERFACCIA: Banner di avvertimento sovrimpresso a schermo se l'ascensore è ancora sbarrato
+    let curX = Math.floor(player.x);
+    let curY = Math.floor(player.y);
+    if (map[curY] && map[curY][curX] === 9 && window.isElevatorLocked) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(120, 40, 31, 0.85)';
+        ctx.fillRect(width / 2 - 240, height / 2 + 40, 480, 40);
+        ctx.strokeStyle = '#e74c3c';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(width / 2 - 240, height / 2 + 40, 480, 40);
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = "bold 13px 'Courier New'";
+        ctx.textAlign = "center";
+        ctx.fillText("ASCENSORE BLOCCATO: UCCIDI GLI ZOMBIE E PRENDI LA CHIAVE!", width / 2, height / 2 + 64);
+        ctx.restore();
+    }
 }
 
 function drawWeapon() {
@@ -401,7 +563,6 @@ function drawMinimap() {
     for (let y = 0; y < map.length; y++) {
         for (let x = 0; x < map[y].length; x++) {
             if (map[y][x] > 0) {
-                // Il 9 (ascensore) è verde sulla minimappa!
                 ctx.fillStyle = (map[y][x] === 9) ? '#1abc9c' : '#566573'; 
                 ctx.fillRect(10 + x * size, 10 + y * size, size - 1, size - 1);
             }
@@ -441,9 +602,9 @@ function drawVictoryScreen() {
     ctx.fillText("SISTEMA RIPRISTINATO", width / 2, height / 2 - 20);
     ctx.fillStyle = '#d5dbdb';
     ctx.font = "18px 'Courier New'";
-    ctx.fillText("Direttore eliminato. Struttura in sicurezza.", width / 2, height / 2 + 20);
+    ctx.fillText("Regina eliminata. Struttura in sicurezza.", width / 2, height / 2 + 20);
     ctx.fillText("Premi 'R' per ricominciare", width / 2, height / 2 + 50);
 }
 
-// Lancia il primo frame per far vedere la schermata iniziale
+// Primo frame di avvio
 update();
