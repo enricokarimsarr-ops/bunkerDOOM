@@ -85,7 +85,6 @@ function shoot() {
                             window.keyDropped = true;
                         }
                     }
-                    // NOTA: Abbiamo rimosso completamente il SetTimeout del respawn! Ora i morti restano morti.
                 }
             }
         }
@@ -145,24 +144,23 @@ function update() {
     }
     if (shieldEl) shieldEl.innerText = Math.floor(player.shield || 0);
 
-    // CONTROLLO TRANSIZIONE LIVELLO (PUNTO 4 + TRANSIZIONE HTML)
+    // CONTROLLO TRANSIZIONE LIVELLO
     let mapX = Math.floor(player.x);
     let mapY = Math.floor(player.y);
     if (map[mapY] && map[mapY][mapX] === 9) {
-        // Entra solo se l'ascensore è sbloccato e NON stiamo già facendo la transizione
         if (!window.isElevatorLocked && !window.isTransitioning) {
             if (currentLevel < 3) {
-                window.isTransitioning = true; // Blocca ulteriori trigger
+                window.isTransitioning = true; 
                 
                 // Attivazione dell'Overlay HTML
                 let transitionScreen = document.getElementById('floor-transition');
                 if (transitionScreen) {
                     document.getElementById('transition-title').innerText = "PIANO " + currentLevel + " COMPLETATO";
-                    document.getElementById('transition-subtitle').innerText = "ACCESSO AL PIANO " + (currentLevel + 1) + "...";
+                    document.getElementById('transition-subtitle').innerText = "ACCESSO AL PIANO " + (currentLevel + 1) + "... \nSblocco dei protocolli di sicurezza in corso.";
                     transitionScreen.classList.add('active');
                 }
 
-                // Pausa di 3 secondi per mostrare l'intermezzo prima di caricare la nuova mappa
+                // Pausa di 3 secondi per mostrare l'intermezzo
                 setTimeout(() => {
                     let nextLevel = currentLevel + 1;
                     LoadCorporateLevel(nextLevel);
@@ -172,13 +170,11 @@ function update() {
                     player.x = 1.5; 
                     player.y = 1.5;
                     
-                    // Resetta le sicurezze per il nuovo piano
                     window.isElevatorLocked = true; 
                     window.keyDropped = false;
                     window.queenSpawned = false;
                     window.isTransitioning = false;
                     
-                    // Nasconde l'Overlay
                     if (transitionScreen) transitionScreen.classList.remove('active');
                 }, 3000);
 
@@ -191,7 +187,6 @@ function update() {
         }
     }
 
-    // Blocca i movimenti del giocatore se c'è la schermata di transizione attiva
     if (window.isTransitioning) return;
 
     let moveSpeed = 0.05;
