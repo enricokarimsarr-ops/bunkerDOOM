@@ -149,9 +149,22 @@ function update() {
                     window.isElevatorLocked = true; 
                     window.keyDropped = false;
                     window.queenSpawned = false;
-                    window.isTransitioning = false;
                     
-                    if (transitionScreen) transitionScreen.classList.remove('active');
+                    // =========================================================================
+                    // AGGIORNAMENTO CRITICO: Richiesta di clic per aggirare il blocco browser
+                    // =========================================================================
+                    if (transitionScreen) {
+                        document.getElementById('transition-subtitle').innerText = "PIANO CARICATO CON SUCCESSO.\n\n[ CLICCA QUI PER RIPRENDERE IL CONTROLLO ]";
+                    }
+
+                    const startNextFloor = () => {
+                        window.isTransitioning = false; 
+                        if (transitionScreen) transitionScreen.classList.remove('active');
+                        canvas.requestPointerLock(); // Il browser ora accetta il Pointer Lock perché scatenato da un clic!
+                        window.removeEventListener('click', startNextFloor); 
+                    };
+
+                    window.addEventListener('click', startNextFloor);
                 }, 3000);
 
             } else {
@@ -163,7 +176,7 @@ function update() {
         }
     }
 
-    // CORREZIONE CRITICA: Mantiene in vita il loop di gioco durante i 3 secondi di transizione!
+    // Mantiene in vita il loop di gioco durante i 3 secondi di transizione!
     if (window.isTransitioning) {
         render(); 
         if (!gameOver) requestAnimationFrame(update);
