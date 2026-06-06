@@ -14,9 +14,11 @@ let shootTimer = 0;
 let gameOver = false;
 let globalAnimTime = 0;
 
-// Variabili globali per la meccanica delle chiavi dell'ascensore (PUNTO 4)
+// Variabili globali per le meccaniche (Chiavi, Boss e Transizioni)
 window.isElevatorLocked = true;
 window.keyDropped = false;
+window.queenSpawned = false;
+window.isTransitioning = false;
 
 // Avvio del gioco con click
 container.addEventListener('click', () => {
@@ -53,9 +55,10 @@ function shoot() {
 
         if (transformY > 0) {
             let spriteScreenX = Math.floor((width / 2) * (1 + transformX / transformY));
+            
             // Controllo Hitbox centrale del colpo
             if (Math.abs(spriteScreenX - width / 2) < 55 && transformY < zBuffer[width / 2]) {
-                enemy.health -= 1; // Infligge 1 danno di rivetto
+                enemy.health -= 1; 
                 
                 if (enemy.health <= 0) {
                     enemy.alive = false;
@@ -63,28 +66,26 @@ function shoot() {
                     document.getElementById('score').innerText = player.score;
                     if(typeof playKillSound === 'function') playKillSound(); 
                     
-                    // LOGICA CHIAVE (PUNTO 4): Se tutti i nemici del piano attuale sono a terra, droppa la chiave unica
-                    if (!window.keyDropped && enemies.filter(e => e.alive).length === 0) {
-                        items.push({ x: enemy.x, y: enemy.y, type: 'key', active: true });
-                        window.keyDropped = true;
+                    // NUOVA LOGICA: Gestione Ondate e Boss
+                    if (enemy.type === 'drone' || enemy.type === 'zombie') {
+                        // Controlliamo quanti droni/zombie sono ancora vivi
+                        let aliveDrones = enemies.filter(e => e.alive && (e.type === 'drone' || e.type === 'zombie')).length;
+                        
+                        // Se sono finiti e non c'è ancora la Regina (e non siamo al piano 3), SPAWNALA!
+                        if (aliveDrones === 0 && !window.queenSpawned && currentLevel < 3) {
+                            window.queenSpawned = true;
+                            // Spawna la Regina nella posizione dell'ultimo zombie ucciso
+                            enemies.push({ x: enemy.x, y: enemy.y, alive: true, speed: 0.035, hitFrame: 0, type: 'queen', health: 6 });
+                        }
+                    } 
+                    else if (enemy.type === 'queen' || enemy.type === 'boss') {
+                        // Rilascia la chiave SOLO quando muore la Regina o il Boss
+                        if (!window.keyDropped) {
+                            items.push({ x: enemy.x, y: enemy.y, type: 'key', active: true });
+                            window.keyDropped = true;
+                        }
                     }
-                    
-                    // Se non è il boss o la regina, respawna dopo 4 secondi (PUNTO 3 e PUNTO 5)
-                    if (enemy.type !== 'boss' && enemy.type !== 'queen') {
-                        setTimeout(() => {
-                            if (gameOver) return;
-                            enemy.alive = true;
-                            enemy.health = 1;
-                            let spawned = false;
-                            while(!spawned) {
-                                let rx = Math.floor(Math.random() * 14) + 1;
-                                let ry = Math.floor(Math.random() * 14) + 1;
-                                if(map[ry][rx] === 0 && Math.abs(rx - player.x) > 2) {
-                                    enemy.x = rx + 0.5; enemy.y = ry + 0.5; spawned = true;
-                                }
-                            }
-                        }, 4000);
-                    }
+                    // NOTA: Abbiamo rimosso completamente il SetTimeout del respawn! Ora i morti restano morti.
                 }
             }
         }
@@ -93,7 +94,6 @@ function shoot() {
 
 function resetGame() {
     gameOver = false;
-    // PUNTO 1: Risorse Iniziali Ridotte Survival Mode rigorosa
     player.health = 70; 
     player.shield = 0;  
     player.ammo = 10;
@@ -105,8 +105,11 @@ function resetGame() {
     player.planeX = 0.0; 
     player.planeY = 0.66;
     
+    // Reset variabili di progressione
     window.isElevatorLocked = true;
     window.keyDropped = false;
+    window.queenSpawned = false;
+    window.isTransitioning = false;
     
     if(typeof LoadCorporateLevel === 'function') LoadCorporateLevel(1);
     if(typeof LoadLevelSprites === 'function') LoadLevelSprites(1);
@@ -118,6 +121,9 @@ function resetGame() {
     let shieldUI = document.getElementById('shield');
     if (shieldUI) shieldUI.innerText = 0;
 
+    let transitionScreen = document.getElementById('floor-transition');
+    if (transitionScreen) transitionScreen.classList.remove('active');
+
     canvas.requestPointerLock();
     update();
 }
@@ -127,7 +133,6 @@ function update() {
     if (gameOver) return;
     globalAnimTime += 0.08;
 
-    // PUNTO 2: Aggiornamento dinamico interfaccia scudo
     let shieldEl = document.getElementById('shield');
     if (!shieldEl) {
         let uiDiv = document.getElementById('ui');
@@ -140,20 +145,43 @@ function update() {
     }
     if (shieldEl) shieldEl.innerText = Math.floor(player.shield || 0);
 
-    // CONTROLLO TRANSIZIONE LIVELLO (PUNTO 4: Blocco 9)
+    // CONTROLLO TRANSIZIONE LIVELLO (PUNTO 4 + TRANSIZIONE HTML)
     let mapX = Math.floor(player.x);
     let mapY = Math.floor(player.y);
     if (map[mapY] && map[mapY][mapX] === 9) {
-        if (!window.isElevatorLocked) {
+        // Entra solo se l'ascensore è sbloccato e NON stiamo già facendo la transizione
+        if (!window.isElevatorLocked && !window.isTransitioning) {
             if (currentLevel < 3) {
-                let nextLevel = currentLevel + 1;
-                LoadCorporateLevel(nextLevel);
-                currentLevel = nextLevel; // Sincronizzazione di sicurezza del livello
-                LoadLevelSprites(currentLevel);
-                player.x = 1.5; 
-                player.y = 1.5;
-                window.isElevatorLocked = true; // Blocca l'ascensore del piano successivo
-                window.keyDropped = false;
+                window.isTransitioning = true; // Blocca ulteriori trigger
+                
+                // Attivazione dell'Overlay HTML
+                let transitionScreen = document.getElementById('floor-transition');
+                if (transitionScreen) {
+                    document.getElementById('transition-title').innerText = "PIANO " + currentLevel + " COMPLETATO";
+                    document.getElementById('transition-subtitle').innerText = "ACCESSO AL PIANO " + (currentLevel + 1) + "...";
+                    transitionScreen.classList.add('active');
+                }
+
+                // Pausa di 3 secondi per mostrare l'intermezzo prima di caricare la nuova mappa
+                setTimeout(() => {
+                    let nextLevel = currentLevel + 1;
+                    LoadCorporateLevel(nextLevel);
+                    currentLevel = nextLevel; 
+                    LoadLevelSprites(currentLevel);
+                    
+                    player.x = 1.5; 
+                    player.y = 1.5;
+                    
+                    // Resetta le sicurezze per il nuovo piano
+                    window.isElevatorLocked = true; 
+                    window.keyDropped = false;
+                    window.queenSpawned = false;
+                    window.isTransitioning = false;
+                    
+                    // Nasconde l'Overlay
+                    if (transitionScreen) transitionScreen.classList.remove('active');
+                }, 3000);
+
             } else {
                 gameOver = true;
                 document.exitPointerLock();
@@ -162,6 +190,9 @@ function update() {
             }
         }
     }
+
+    // Blocca i movimenti del giocatore se c'è la schermata di transizione attiva
+    if (window.isTransitioning) return;
 
     let moveSpeed = 0.05;
     let strafeX = -player.dirY;
@@ -188,7 +219,7 @@ function update() {
         if (map[Math.floor(nextY)][Math.floor(player.x)] === 0 || map[Math.floor(nextY)][Math.floor(player.x)] === 9) player.y = nextY;
     }
 
-    // IA NEMICI (PUNTO 2, PUNTO 3 e PUNTO 5)
+    // IA NEMICI
     enemies.forEach(enemy => {
         if (!enemy.alive) return;
         let dx = player.x - enemy.x; let dy = player.y - enemy.y;
@@ -201,7 +232,6 @@ function update() {
         if (dist < attackRange) {
             enemy.hitFrame = 1; 
             
-            // PUNTO 2: Calcolo assorbimento dei danni tramite lo Scudo Corporeo
             let finalDamage = damage;
             if (player.shield > 0) {
                 if (player.shield >= finalDamage) {
@@ -231,7 +261,7 @@ function update() {
         }
     });
 
-    // RISORSE E RACCOLTA OGGETTI (PUNTO 2 e PUNTO 4)
+    // RISORSE E RACCOLTA OGGETTI
     items.forEach(item => {
         if (!item.active) return;
         let idx = player.x - item.x; let idy = player.y - item.y;
@@ -246,15 +276,12 @@ function update() {
                 player.ammo += 12;
                 document.getElementById('ammo').innerText = player.ammo;
             } else if (item.type === 'folder') {
-                // PUNTO 2: Ricarica Scudo Faldone dell'Archivio (+25%)
                 player.shield = Math.min(100, (player.shield || 0) + 25);
                 if (shieldEl) shieldEl.innerText = Math.floor(player.shield);
             } else if (item.type === 'key') {
-                // PUNTO 4: Raccolta chiave d'oro per sbloccare l'ascensore corrente
                 window.isElevatorLocked = false;
             }
             
-            // Fa rinascere l'oggetto solo se non si tratta della chiave unica di sblocco
             if (item.type !== 'key' && typeof respawnItem === 'function') {
                 respawnItem(item);
             }
@@ -307,7 +334,6 @@ function render() {
 
         let gradient = ctx.createLinearGradient(0, drawStart, 0, drawEnd);
         
-        // Disegno delle pareti dell'Ascensore (Blocco 9)
         if (map[mapY] && map[mapY][mapX] === 9) {
             let topColor = (side === 1) ? '#117a65' : '#1abc9c';
             gradient.addColorStop(0, topColor);
@@ -335,7 +361,6 @@ function render() {
         ctx.beginPath(); ctx.moveTo(x, drawStart); ctx.lineTo(x, drawEnd); ctx.stroke();
     }
 
-    // RENDERING DEGLI SPRITE TRIDIMENSIONALI (CON EFFETTI DI RESTYLING)
     let sprites = [];
     items.forEach(item => { if (item.active) sprites.push({ x: item.x, y: item.y, type: item.type }); });
     enemies.forEach(enemy => { if (enemy.alive) sprites.push({ x: enemy.x, y: enemy.y, type: enemy.type, hitFrame: enemy.hitFrame }); });
@@ -359,7 +384,6 @@ function render() {
             let bobbing = (!isEnemyType) ? Math.sin(globalAnimTime * 1.8) * 10 : 0;
             let enemySway = (isEnemyType) ? Math.sin(globalAnimTime * 2.2) * 6 : 0;
             
-            // PUNTO 5: La Regina degli Zombie raddoppia la scala di rendering tridimensionale (scale = 2.0)
             let scale = (sprite.type === 'boss' || sprite.type === 'queen') ? 2.0 : 1.0;
 
             let spriteHeight = Math.abs(Math.floor(height / transformY)) * scale;
@@ -377,103 +401,83 @@ function render() {
                 if (transformY < zBuffer[stripe]) {
                     let relX = (stripe - drawStartX) / spriteWidth;
 
-                    // PUNTO 3: Restyling geometrico degli Zombie da Ufficio
                     if (sprite.type === 'zombie' || sprite.type === 'drone') {
                         if (sprite.hitFrame === 1) {
-                            ctx.fillStyle = '#ff4d4d'; // Flash rosso sangue durante il morso
+                            ctx.fillStyle = '#ff4d4d'; 
                             ctx.fillRect(stripe, drawStartY + sHeight * 0.1, 1, sHeight * 0.8);
                         } else {
-                            // Testa (Verde decomposizione)
                             if (relX > 0.38 && relX < 0.62) {
                                 ctx.fillStyle = '#27ae60'; 
                                 ctx.fillRect(stripe, drawStartY + sHeight * 0.1, 1, sHeight * 0.2);
-                                // Occhi rosso iniettati
                                 ctx.fillStyle = '#e74c3c';
                                 ctx.fillRect(stripe, drawStartY + sHeight * 0.16, 1, sHeight * 0.04);
                             }
-                            // Busto (Camicia aziendale bianca)
                             if (relX > 0.25 && relX < 0.75) {
                                 ctx.fillStyle = '#ffffff'; 
                                 ctx.fillRect(stripe, drawStartY + sHeight * 0.3, 1, sHeight * 0.4);
-                                // Cravatta Rossa d'ufficio
                                 if (relX > 0.46 && relX < 0.54) {
                                     ctx.fillStyle = '#c0392b'; 
                                     ctx.fillRect(stripe, drawStartY + sHeight * 0.35, 1, sHeight * 0.25);
                                 }
                             }
-                            // Gambe (Pantaloni eleganti scuri)
                             if (relX > 0.30 && relX < 0.70) {
                                 ctx.fillStyle = '#2c3e50'; 
                                 ctx.fillRect(stripe, drawStartY + sHeight * 0.7, 1, sHeight * 0.2);
                             }
                         }
                     } 
-                    // PUNTO 5: Rendering della Regina degli Zombie (Ex Boss)
                     else if (sprite.type === 'queen' || sprite.type === 'boss') {
                         if (sprite.hitFrame === 1) {
                             ctx.fillStyle = '#ff3333'; 
                             ctx.fillRect(stripe, drawStartY, 1, sHeight);
                         } else {
-                            // Testa gigante mutata
                             if (relX > 0.35 && relX < 0.65) {
                                 ctx.fillStyle = '#148f77'; 
                                 ctx.fillRect(stripe, drawStartY + sHeight * 0.05, 1, sHeight * 0.2);
-                                // Occhi cremisi incandescenti
                                 if (relX > 0.40 && relX < 0.60) {
                                     ctx.fillStyle = '#ff0000';
                                     ctx.fillRect(stripe, drawStartY + sHeight * 0.10, 1, sHeight * 0.06);
                                 }
                             }
-                            // Tailleur lacerato a brandelli (Pattern viola/fucsia aziendale)
                             if (relX > 0.20 && relX < 0.80) {
                                 ctx.fillStyle = (Math.floor(stripe / 3) % 2 === 0) ? '#ff00ff' : '#8e44ad'; 
                                 ctx.fillRect(stripe, drawStartY + sHeight * 0.25, 1, sHeight * 0.5);
-                                // Spilla/Distintivo dorato dei quadri aziendali
                                 if (relX > 0.45 && relX < 0.55) {
                                     ctx.fillStyle = '#f1c40f';
                                     ctx.fillRect(stripe, drawStartY + sHeight * 0.3, 1, sHeight * 0.1);
                                 }
                             }
-                            // Fine della gonna stracciata
                             if (relX > 0.25 && relX < 0.75) {
                                 ctx.fillStyle = '#5b2c6f'; 
                                 ctx.fillRect(stripe, drawStartY + sHeight * 0.75, 1, sHeight * 0.2);
                             }
                         }
                     }
-                    // PUNTO 2: Disegno pixel art 3D del Faldone dell'Archivio (Scudo)
                     else if (sprite.type === 'folder') {
                         if (relX > 0.30 && relX < 0.70) {
-                            ctx.fillStyle = '#2980b9'; // Plastica blu raccoglitore
+                            ctx.fillStyle = '#2980b9'; 
                             ctx.fillRect(stripe, midY - sHeight * 0.2, 1, sHeight * 0.4);
-                            // Dorso/Etichetta bianca per i testi
                             if (relX > 0.35 && relX < 0.45) {
                                 ctx.fillStyle = '#ffffff';
                                 ctx.fillRect(stripe, midY - sHeight * 0.15, 1, sHeight * 0.3);
-                                // Foro d'estrazione nero ad anello
                                 ctx.fillStyle = '#000000';
                                 ctx.fillRect(stripe, midY + sHeight * 0.05, 1, sHeight * 0.03);
                             }
                         }
                     }
-                    // PUNTO 4: Disegno pixel art 3D della Chiave dell'Ascensore dropped
                     else if (sprite.type === 'key') {
                         if (relX > 0.40 && relX < 0.60) {
-                            ctx.fillStyle = '#f1c40f'; // Ottone/Oro splendente
-                            // Anello impugnatura superiore
+                            ctx.fillStyle = '#f1c40f'; 
                             ctx.fillRect(stripe, midY - sHeight * 0.15, 1, sHeight * 0.1);
-                            // Corpo centrale/Stelo della chiave
                             if (relX > 0.46 && relX < 0.54) {
                                 ctx.fillRect(stripe, midY - sHeight * 0.05, 1, sHeight * 0.25);
                             }
-                            // Doppi dentini intagliati per la serratura
                             if (relX > 0.52 && relX < 0.60) {
                                 ctx.fillRect(stripe, midY + sHeight * 0.1, 1, sHeight * 0.05);
                                 ctx.fillRect(stripe, midY + sHeight * 0.16, 1, sHeight * 0.05);
                             }
                         }
                     }
-                    // Ripristino e conservazione dei vecchi asset standard (Medkit e Ammo)
                     else if (sprite.type === 'medkit') {
                         if (relX > 0.44 && relX < 0.56) {
                             ctx.fillStyle = '#2c3e50';
@@ -513,7 +517,6 @@ function render() {
     drawWeapon();
     drawMinimap();
     
-    // PUNTO 4: Banner di emergenza a schermo intero se tenti di entrare nell'ascensore bloccato
     let curX = Math.floor(player.x);
     let curY = Math.floor(player.y);
     if (map[curY] && map[curY][curX] === 9 && window.isElevatorLocked) {
@@ -527,7 +530,7 @@ function render() {
         ctx.fillStyle = '#ffffff';
         ctx.font = "bold 13px 'Courier New'";
         ctx.textAlign = "center";
-        ctx.fillText("ASCENSORE BLOCCATO: UCCIDI GLI ZOMBIE E PRENDI LA CHIAVE!", width / 2, height / 2 + 64);
+        ctx.fillText("ASCENSORE BLOCCATO: UCCIDI LA REGINA E PRENDI LA CHIAVE!", width / 2, height / 2 + 64);
         ctx.restore();
     }
 }
@@ -594,7 +597,6 @@ function drawGameOverScreen() {
     ctx.fillText("Struttura compromessa. Premi 'R' per riavviare il drone", width / 2, height / 2 + 30);
 }
 
-// PUNTO 5: Fine della partita bilanciato sul completamento della Regina del Bunker
 function drawVictoryScreen() {
     ctx.fillStyle = 'rgba(15, 15, 15, 0.9)';
     ctx.fillRect(0, 0, width, height);
