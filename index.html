@@ -5,6 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SEC 7: Aurelia Cement - Survival Edition</title>
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* Stile specifico per la schermata di transizione livello */
+        #floor-transition {
+            display: none; /* Nascosto di default */
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 15, 15, 0.98);
+            color: #f39c12;
+            font-family: 'Courier New', Courier, monospace;
+            text-align: center;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 10;
+            border: 4px solid #78281f;
+            box-sizing: border-box;
+        }
+
+        /* Quando JavaScript aggiunge la classe .active, lo schermo compare */
+        #floor-transition.active {
+            display: flex;
+        }
+    </style>
 </head>
 <body>
 
@@ -16,6 +42,11 @@
             <div>INTEGRITÀ: <span id="health">100</span>%</div>
             <div>RIVETTI: <span id="ammo">20</span></div>
             <div>DRONI ABBATTUTI: <span id="score">0</span></div>
+        </div>
+
+        <div id="floor-transition">
+            <h2 id="transition-title" style="font-size: 32px; color: #cd6155; text-shadow: 3px 3px 5px #000; margin: 0 0 15px 0; letter-spacing: 2px;"></h2>
+            <p id="transition-subtitle" style="font-size: 18px; color: #d5dbdb; text-shadow: 2px 2px #000; margin: 0; max-width: 80%; line-height: 1.5;"></p>
         </div>
     </div>
 
