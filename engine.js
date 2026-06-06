@@ -163,7 +163,12 @@ function update() {
         }
     }
 
-    if (window.isTransitioning) return;
+    // CORREZIONE CRITICA: Mantiene in vita il loop di gioco durante i 3 secondi di transizione!
+    if (window.isTransitioning) {
+        render(); 
+        if (!gameOver) requestAnimationFrame(update);
+        return;
+    }
 
     let moveSpeed = 0.05;
     let strafeX = -player.dirY;
@@ -325,7 +330,6 @@ function render() {
         ctx.beginPath(); ctx.moveTo(x, drawStart); ctx.lineTo(x, drawEnd); ctx.stroke();
     }
 
-    // CHIAMATA ALLA FUNZIONE UNIFICATA DI RENDERING SPRITE DI SPRITES.JS
     if (typeof drawSprites === 'function') {
         drawSprites(ctx, player, width, height, zBuffer, globalAnimTime);
     }
