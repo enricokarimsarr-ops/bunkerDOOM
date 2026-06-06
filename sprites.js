@@ -9,11 +9,13 @@ let items = [];
 // Il Database dei tre piani aziendali del Bunker
 const levelSpritesDatabase = {
     1: {
-        // PIANO 1: I tuoi 3 Droni originali e le 4 risorse storiche
+        // PIANO 1: 3 Droni originali e 1 Regina del Primo Piano
         enemies: [
-            { x: 14.5, y: 1.5, alive: true, speed: 0.024, hitFrame: 0, type: 'drone', health: 1 },
-            { x: 8.5,  y: 5.5, alive: true, speed: 0.020, hitFrame: 0, type: 'drone', health: 1 },
-            { x: 13.5, y: 13.5, alive: true, speed: 0.028, hitFrame: 0, type: 'drone', health: 1 }
+            { x: 14.5, y: 1.5,  alive: true, speed: 0.024, hitFrame: 0, type: 'drone', health: 1 },
+            { x: 8.5,  y: 5.5,  alive: true, speed: 0.020, hitFrame: 0, type: 'drone', health: 1 },
+            { x: 13.5, y: 13.5, alive: true, speed: 0.028, hitFrame: 0, type: 'drone', health: 1 },
+            // REGINA DEL PIANO 1: Posizionata strategicamente in un'area aperta (3 HP)
+            { x: 11.5, y: 7.5,  alive: true, speed: 0.018, hitFrame: 0, type: 'queen', health: 3 }
         ],
         items: [
             { x: 4.5, y: 1.5, type: 'medkit', active: true },
@@ -23,30 +25,32 @@ const levelSpritesDatabase = {
         ]
     },
     2: {
-        // PIANO 2: Più droni, posizionati strategicamente nelle sale riunioni
+        // PIANO 2: Droni di pattuglia e la Regina del Secondo Piano
         enemies: [
-            { x: 4.5, y: 3.5, alive: true, speed: 0.024, hitFrame: 0, type: 'drone', health: 1 },
-            { x: 11.5, y: 3.5, alive: true, speed: 0.024, hitFrame: 0, type: 'drone', health: 1 },
-            { x: 2.5, y: 12.5, alive: true, speed: 0.028, hitFrame: 0, type: 'drone', health: 1 },
-            { x: 13.5, y: 12.5, alive: true, speed: 0.030, hitFrame: 0, type: 'drone', health: 1 }
+            { x: 4.5,  y: 3.5,  alive: true, speed: 0.024, hitFrame: 0, type: 'drone', health: 1 },
+            { x: 11.5, y: 3.5,  alive: true, speed: 0.024, hitFrame: 0, type: 'drone', health: 1 },
+            { x: 2.5,  y: 12.5, alive: true, speed: 0.028, hitFrame: 0, type: 'drone', health: 1 },
+            { x: 13.5, y: 12.5, alive: true, speed: 0.030, hitFrame: 0, type: 'drone', health: 1 },
+            // REGINA DEL PIANO 2: Più veloce e corazzata (4 HP)
+            { x: 8.5,  y: 13.5, alive: true, speed: 0.022, hitFrame: 0, type: 'queen', health: 4 }
         ],
         items: [
-            { x: 1.5, y: 5.5, type: 'medkit', active: true },
-            { x: 14.5, y: 5.5, type: 'ammo', active: true },
-            { x: 7.5, y: 7.5, type: 'medkit', active: true },
-            { x: 7.5, y: 13.5, type: 'ammo', active: true }
+            { x: 1.5,  y: 5.5,  type: 'medkit', active: true },
+            { x: 14.5, y: 5.5,  type: 'ammo', active: true },
+            { x: 7.5,  y: 7.5,  type: 'medkit', active: true },
+            { x: 7.5,  y: 13.5, type: 'ammo', active: true }
         ]
     },
     3: {
-        // PIANO 3: L'arena finale. Pochissimi oggetti e il BOSS "Il Direttore Generale Corrotto"
+        // PIANO 3: L'arena finale. Solo il BOSS "Il Direttore Generale Corrotto" (5 HP)
         enemies: [
-            { x: 8.5, y: 8.5, alive: true, speed: 0.034, hitFrame: 0, type: 'boss', health: 5 } // Ha 5 punti vita!
+            { x: 8.5, y: 8.5, alive: true, speed: 0.034, hitFrame: 0, type: 'boss', health: 5 }
         ],
         items: [
-            { x: 1.5, y: 7.5, type: 'medkit', active: true },
-            { x: 14.5, y: 7.5, type: 'ammo', active: true },
-            { x: 7.5, y: 1.5, type: 'medkit', active: true },
-            { x: 7.5, y: 14.5, type: 'ammo', active: true }
+            { x: 1.5,  y: 7.5,  type: 'medkit', active: true },
+            { x: 14.5, y: 7.5,  type: 'ammo', active: true },
+            { x: 7.5,  y: 1.5,  type: 'medkit', active: true },
+            { x: 7.5,  y: 14.5, type: 'ammo', active: true }
         ]
     }
 };
@@ -109,9 +113,9 @@ function drawSprites(ctx, player, width, height, zBuffer, globalAnimTime) {
         if (transformY > 0) {
             let spriteScreenX = Math.floor((width / 2) * (1 + transformX / transformY));
             
-            // Oscillazioni (Effetti fluttuanti industriali)
-            let bobbing = (sprite.type !== 'drone' && sprite.type !== 'boss') ? Math.sin(globalAnimTime * 1.8) * 10 : 0;
-            let droneSway = (sprite.type === 'drone' || sprite.type === 'boss') ? Math.sin(globalAnimTime * 2.2) * 6 : 0;
+            // Oscillazioni (Effetti fluttuanti industriali applicati a droni, regine e boss)
+            let bobbing = (sprite.type !== 'drone' && sprite.type !== 'boss' && sprite.type !== 'queen') ? Math.sin(globalAnimTime * 1.8) * 10 : 0;
+            let droneSway = (sprite.type === 'drone' || sprite.type === 'boss' || sprite.type === 'queen') ? Math.sin(globalAnimTime * 2.2) * 6 : 0;
 
             let spriteHeight = Math.abs(Math.floor(height / transformY));
             let drawStartY = Math.max(0, -spriteHeight / 2 + height / 2 + bobbing + droneSway);
@@ -146,9 +150,34 @@ function drawSprites(ctx, player, width, height, zBuffer, globalAnimTime) {
                             ctx.fillRect(stripe, midY, 1, sHeight * 0.3);
                         }
                     } 
+                    else if (sprite.type === 'queen') {
+                        // REGINA DEL BUNKER (Mini-boss cibernetico, imponente e viola neon)
+                        ctx.fillStyle = (sprite.hitFrame === 1) ? '#ffffff' : '#2c3e50'; // Flash bianco se colpita
+                        
+                        // Telaio esoscheletrico pesante allargato
+                        if (relX > 0.15 && relX < 0.85) {
+                            ctx.fillRect(stripe, drawStartY + sHeight * 0.15, 1, sHeight * 0.65);
+                        }
+                        // Ali/Stabilizzatori energetici laterali (Viola Intenso)
+                        if ((relX > 0.15 && relX < 0.30) || (relX > 0.70 && relX < 0.85)) {
+                            if (sprite.hitFrame !== 1) ctx.fillStyle = '#8e44ad';
+                            ctx.fillRect(stripe, drawStartY + sHeight * 0.22, 1, sHeight * 0.45);
+                        }
+                        // Cuore/Nucleo centrale a impulsi di plasma (Magenta)
+                        if (relX > 0.40 && relX < 0.60) {
+                            if (sprite.hitFrame !== 1) {
+                                ctx.fillStyle = (Math.sin(globalAnimTime * 4) > 0) ? '#9b59b6' : '#5b2c6f';
+                            }
+                            ctx.fillRect(stripe, drawStartY + sHeight * 0.20, 1, sHeight * 0.55);
+                        }
+                        // Sensore visivo principale rosso minaccioso al centro
+                        if (stripe > spriteScreenX - 6 && stripe < spriteScreenX + 6 && relX > 0.46 && relX < 0.54) {
+                            ctx.fillStyle = '#e74c3c';
+                            ctx.fillRect(stripe, drawStartY + sHeight * 0.32, 1, sHeight * 0.1);
+                        }
+                    }
                     else if (sprite.type === 'boss') {
                         // IL DIRETTORE GENERALE CORROTTO (Boss imponente e minaccioso)
-                        // Alterna colori aziendali cibernetici e scuri se colpito
                         ctx.fillStyle = (sprite.hitFrame === 1) ? '#ff0000' : '#112233'; // Armatura scura o flash rosso
                         
                         // Monolite/Busto Cyber-Manageriale Principale
