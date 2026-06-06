@@ -14,19 +14,16 @@ let shootTimer = 0;
 let gameOver = false;
 let globalAnimTime = 0;
 
-// Variabili globali per le meccaniche (Chiavi, Boss e Transizioni)
 window.isElevatorLocked = true;
 window.keyDropped = false;
 window.queenSpawned = false;
 window.isTransitioning = false;
 
-// Avvio del gioco con click
 container.addEventListener('click', () => {
     if (typeof initAudio === 'function') initAudio(); 
     if (!gameOver) canvas.requestPointerLock();
 });
 
-// Gestione dello sparo e del riavvio
 window.addEventListener('keydown', e => {
     if (e.key === ' ' || e.key === 'Spacebar') shoot();
     if (gameOver && e.key.toLowerCase() === 'r') resetGame();
@@ -56,9 +53,10 @@ function shoot() {
         if (transformY > 0) {
             let spriteScreenX = Math.floor((width / 2) * (1 + transformX / transformY));
             
-            // Controllo Hitbox centrale del colpo
             if (Math.abs(spriteScreenX - width / 2) < 55 && transformY < zBuffer[width / 2]) {
                 enemy.health -= 1; 
+                enemy.hitFrame = 1;
+                setTimeout(() => { enemy.hitFrame = 0; }, 100);
                 
                 if (enemy.health <= 0) {
                     enemy.alive = false;
@@ -66,20 +64,15 @@ function shoot() {
                     document.getElementById('score').innerText = player.score;
                     if(typeof playKillSound === 'function') playKillSound(); 
                     
-                    // NUOVA LOGICA: Gestione Ondate e Boss
-                    if (enemy.type === 'drone' || enemy.type === 'zombie') {
-                        // Controlliamo quanti droni/zombie sono ancora vivi
-                        let aliveDrones = enemies.filter(e => e.alive && (e.type === 'drone' || e.type === 'zombie')).length;
+                    if (enemy.type === 'drone') {
+                        let aliveDrones = enemies.filter(e => e.alive && e.type === 'drone').length;
                         
-                        // Se sono finiti e non c'è ancora la Regina (e non siamo al piano 3), SPAWNALA!
                         if (aliveDrones === 0 && !window.queenSpawned && currentLevel < 3) {
                             window.queenSpawned = true;
-                            // Spawna la Regina nella posizione dell'ultimo zombie ucciso
-                            enemies.push({ x: enemy.x, y: enemy.y, alive: true, speed: 0.035, hitFrame: 0, type: 'queen', health: 6 });
+                            enemies.push({ x: enemy.x, y: enemy.y, alive: true, speed: 0.035, hitFrame: 0, type: 'queen', health: 4 });
                         }
                     } 
                     else if (enemy.type === 'queen' || enemy.type === 'boss') {
-                        // Rilascia la chiave SOLO quando muore la Regina o il Boss
                         if (!window.keyDropped) {
                             items.push({ x: enemy.x, y: enemy.y, type: 'key', active: true });
                             window.keyDropped = true;
@@ -104,7 +97,6 @@ function resetGame() {
     player.planeX = 0.0; 
     player.planeY = 0.66;
     
-    // Reset variabili di progressione
     window.isElevatorLocked = true;
     window.keyDropped = false;
     window.queenSpawned = false;
@@ -116,9 +108,7 @@ function resetGame() {
     document.getElementById('health').innerText = 70;
     document.getElementById('score').innerText = 0;
     document.getElementById('ammo').innerText = 10;
-    
-    let shieldUI = document.getElementById('shield');
-    if (shieldUI) shieldUI.innerText = 0;
+    document.getElementById('shield').innerText = 0;
 
     let transitionScreen = document.getElementById('floor-transition');
     if (transitionScreen) transitionScreen.classList.remove('active');
@@ -127,32 +117,19 @@ function resetGame() {
     update();
 }
 
-// LOOP PRINCIPALE DI FISICA E LOGICA
 function update() {
     if (gameOver) return;
     globalAnimTime += 0.08;
 
     let shieldEl = document.getElementById('shield');
-    if (!shieldEl) {
-        let uiDiv = document.getElementById('ui');
-        if (uiDiv) {
-            let newDiv = document.createElement('div');
-            newDiv.innerHTML = 'SCUDO: <span id="shield" style="color: #3498db;">0</span>%';
-            uiDiv.insertBefore(newDiv, uiDiv.children[1]);
-            shieldEl = document.getElementById('shield');
-        }
-    }
     if (shieldEl) shieldEl.innerText = Math.floor(player.shield || 0);
 
-    // CONTROLLO TRANSIZIONE LIVELLO
     let mapX = Math.floor(player.x);
     let mapY = Math.floor(player.y);
     if (map[mapY] && map[mapY][mapX] === 9) {
         if (!window.isElevatorLocked && !window.isTransitioning) {
             if (currentLevel < 3) {
                 window.isTransitioning = true; 
-                
-                // Attivazione dell'Overlay HTML
                 let transitionScreen = document.getElementById('floor-transition');
                 if (transitionScreen) {
                     document.getElementById('transition-title').innerText = "PIANO " + currentLevel + " COMPLETATO";
@@ -160,7 +137,6 @@ function update() {
                     transitionScreen.classList.add('active');
                 }
 
-                // Pausa di 3 secondi per mostrare l'intermezzo
                 setTimeout(() => {
                     let nextLevel = currentLevel + 1;
                     LoadCorporateLevel(nextLevel);
@@ -214,7 +190,6 @@ function update() {
         if (map[Math.floor(nextY)][Math.floor(player.x)] === 0 || map[Math.floor(nextY)][Math.floor(player.x)] === 9) player.y = nextY;
     }
 
-    // IA NEMICI
     enemies.forEach(enemy => {
         if (!enemy.alive) return;
         let dx = player.x - enemy.x; let dy = player.y - enemy.y;
@@ -225,8 +200,6 @@ function update() {
         let damage = isBossType ? 2.0 : 0.9;
 
         if (dist < attackRange) {
-            enemy.hitFrame = 1; 
-            
             let finalDamage = damage;
             if (player.shield > 0) {
                 if (player.shield >= finalDamage) {
@@ -247,7 +220,6 @@ function update() {
             }
             document.getElementById('health').innerText = Math.floor(player.health);
         } else {
-            enemy.hitFrame = 0;
             if (dist < 12) { 
                 let stepX = (dx / dist) * enemy.speed; let stepY = (dy / dist) * enemy.speed;
                 if (map[Math.floor(enemy.y)][Math.floor(enemy.x + stepX)] === 0) enemy.x += stepX;
@@ -256,7 +228,6 @@ function update() {
         }
     });
 
-    // RISORSE E RACCOLTA OGGETTI
     items.forEach(item => {
         if (!item.active) return;
         let idx = player.x - item.x; let idy = player.y - item.y;
@@ -272,7 +243,6 @@ function update() {
                 document.getElementById('ammo').innerText = player.ammo;
             } else if (item.type === 'folder') {
                 player.shield = Math.min(100, (player.shield || 0) + 25);
-                if (shieldEl) shieldEl.innerText = Math.floor(player.shield);
             } else if (item.type === 'key') {
                 window.isElevatorLocked = false;
             }
@@ -290,7 +260,6 @@ function update() {
     else if (!gameOver) requestAnimationFrame(update);
 }
 
-// MOTORE DI RENDERING 3D (RAYCASTING)
 function render() {
     ctx.fillStyle = '#252b30'; ctx.fillRect(0, 0, width, height / 2);
     ctx.fillStyle = '#343a40'; ctx.fillRect(0, height / 2, width, height / 2);
@@ -356,158 +325,10 @@ function render() {
         ctx.beginPath(); ctx.moveTo(x, drawStart); ctx.lineTo(x, drawEnd); ctx.stroke();
     }
 
-    let sprites = [];
-    items.forEach(item => { if (item.active) sprites.push({ x: item.x, y: item.y, type: item.type }); });
-    enemies.forEach(enemy => { if (enemy.alive) sprites.push({ x: enemy.x, y: enemy.y, type: enemy.type, hitFrame: enemy.hitFrame }); });
-
-    sprites.sort((a, b) => {
-        let distA = ((player.x - a.x) * (player.x - a.x) + (player.y - a.y) * (player.y - a.y));
-        let distB = ((player.x - b.x) * (player.x - b.x) + (player.y - b.y) * (player.y - b.y));
-        return distB - distA;
-    });
-
-    sprites.forEach(sprite => {
-        let spriteX = sprite.x - player.x; let spriteY = sprite.y - player.y;
-        let invDet = 1.0 / (player.planeX * player.dirY - player.dirX * player.planeY);
-        let transformX = invDet * (player.dirY * spriteX - player.dirX * spriteY);
-        let transformY = invDet * (-player.planeY * spriteX + player.planeX * spriteY); 
-
-        if (transformY > 0) {
-            let spriteScreenX = Math.floor((width / 2) * (1 + transformX / transformY));
-            
-            let isEnemyType = (sprite.type === 'drone' || sprite.type === 'zombie' || sprite.type === 'boss' || sprite.type === 'queen');
-            let bobbing = (!isEnemyType) ? Math.sin(globalAnimTime * 1.8) * 10 : 0;
-            let enemySway = (isEnemyType) ? Math.sin(globalAnimTime * 2.2) * 6 : 0;
-            
-            let scale = (sprite.type === 'boss' || sprite.type === 'queen') ? 2.0 : 1.0;
-
-            let spriteHeight = Math.abs(Math.floor(height / transformY)) * scale;
-            let drawStartY = Math.max(0, -spriteHeight / 2 + height / 2 + bobbing + enemySway);
-            let drawEndY = Math.min(height - 1, spriteHeight / 2 + height / 2 + bobbing + enemySway);
-
-            let spriteWidth = Math.abs(Math.floor(height / transformY)) * scale;
-            let drawStartX = Math.max(0, Math.floor(-spriteWidth / 2 + spriteScreenX));
-            let drawEndX = Math.min(width - 1, Math.floor(spriteWidth / 2 + spriteScreenX));
-
-            let midY = (drawStartY + drawEndY) / 2;
-            let sHeight = drawEndY - drawStartY;
-
-            for (let stripe = drawStartX; stripe < drawEndX; stripe++) {
-                if (transformY < zBuffer[stripe]) {
-                    let relX = (stripe - drawStartX) / spriteWidth;
-
-                    if (sprite.type === 'zombie' || sprite.type === 'drone') {
-                        if (sprite.hitFrame === 1) {
-                            ctx.fillStyle = '#ff4d4d'; 
-                            ctx.fillRect(stripe, drawStartY + sHeight * 0.1, 1, sHeight * 0.8);
-                        } else {
-                            if (relX > 0.38 && relX < 0.62) {
-                                ctx.fillStyle = '#27ae60'; 
-                                ctx.fillRect(stripe, drawStartY + sHeight * 0.1, 1, sHeight * 0.2);
-                                ctx.fillStyle = '#e74c3c';
-                                ctx.fillRect(stripe, drawStartY + sHeight * 0.16, 1, sHeight * 0.04);
-                            }
-                            if (relX > 0.25 && relX < 0.75) {
-                                ctx.fillStyle = '#ffffff'; 
-                                ctx.fillRect(stripe, drawStartY + sHeight * 0.3, 1, sHeight * 0.4);
-                                if (relX > 0.46 && relX < 0.54) {
-                                    ctx.fillStyle = '#c0392b'; 
-                                    ctx.fillRect(stripe, drawStartY + sHeight * 0.35, 1, sHeight * 0.25);
-                                }
-                            }
-                            if (relX > 0.30 && relX < 0.70) {
-                                ctx.fillStyle = '#2c3e50'; 
-                                ctx.fillRect(stripe, drawStartY + sHeight * 0.7, 1, sHeight * 0.2);
-                            }
-                        }
-                    } 
-                    else if (sprite.type === 'queen' || sprite.type === 'boss') {
-                        if (sprite.hitFrame === 1) {
-                            ctx.fillStyle = '#ff3333'; 
-                            ctx.fillRect(stripe, drawStartY, 1, sHeight);
-                        } else {
-                            if (relX > 0.35 && relX < 0.65) {
-                                ctx.fillStyle = '#148f77'; 
-                                ctx.fillRect(stripe, drawStartY + sHeight * 0.05, 1, sHeight * 0.2);
-                                if (relX > 0.40 && relX < 0.60) {
-                                    ctx.fillStyle = '#ff0000';
-                                    ctx.fillRect(stripe, drawStartY + sHeight * 0.10, 1, sHeight * 0.06);
-                                }
-                            }
-                            if (relX > 0.20 && relX < 0.80) {
-                                ctx.fillStyle = (Math.floor(stripe / 3) % 2 === 0) ? '#ff00ff' : '#8e44ad'; 
-                                ctx.fillRect(stripe, drawStartY + sHeight * 0.25, 1, sHeight * 0.5);
-                                if (relX > 0.45 && relX < 0.55) {
-                                    ctx.fillStyle = '#f1c40f';
-                                    ctx.fillRect(stripe, drawStartY + sHeight * 0.3, 1, sHeight * 0.1);
-                                }
-                            }
-                            if (relX > 0.25 && relX < 0.75) {
-                                ctx.fillStyle = '#5b2c6f'; 
-                                ctx.fillRect(stripe, drawStartY + sHeight * 0.75, 1, sHeight * 0.2);
-                            }
-                        }
-                    }
-                    else if (sprite.type === 'folder') {
-                        if (relX > 0.30 && relX < 0.70) {
-                            ctx.fillStyle = '#2980b9'; 
-                            ctx.fillRect(stripe, midY - sHeight * 0.2, 1, sHeight * 0.4);
-                            if (relX > 0.35 && relX < 0.45) {
-                                ctx.fillStyle = '#ffffff';
-                                ctx.fillRect(stripe, midY - sHeight * 0.15, 1, sHeight * 0.3);
-                                ctx.fillStyle = '#000000';
-                                ctx.fillRect(stripe, midY + sHeight * 0.05, 1, sHeight * 0.03);
-                            }
-                        }
-                    }
-                    else if (sprite.type === 'key') {
-                        if (relX > 0.40 && relX < 0.60) {
-                            ctx.fillStyle = '#f1c40f'; 
-                            ctx.fillRect(stripe, midY - sHeight * 0.15, 1, sHeight * 0.1);
-                            if (relX > 0.46 && relX < 0.54) {
-                                ctx.fillRect(stripe, midY - sHeight * 0.05, 1, sHeight * 0.25);
-                            }
-                            if (relX > 0.52 && relX < 0.60) {
-                                ctx.fillRect(stripe, midY + sHeight * 0.1, 1, sHeight * 0.05);
-                                ctx.fillRect(stripe, midY + sHeight * 0.16, 1, sHeight * 0.05);
-                            }
-                        }
-                    }
-                    else if (sprite.type === 'medkit') {
-                        if (relX > 0.44 && relX < 0.56) {
-                            ctx.fillStyle = '#2c3e50';
-                            ctx.fillRect(stripe, midY - sHeight * 0.24, 1, sHeight * 0.05);
-                        }
-                        if (relX > 0.28 && relX < 0.72) {
-                            ctx.fillStyle = (relX < 0.34 || relX > 0.66) ? '#d5dbdb' : '#ffffff';
-                            ctx.fillRect(stripe, midY - sHeight * 0.19, 1, sHeight * 0.38);
-                            let vCross = (relX > 0.46 && relX < 0.54);
-                            let hCross = (relX > 0.38 && relX < 0.62);
-                            ctx.fillStyle = '#e74c3c'; 
-                            if (vCross) ctx.fillRect(stripe, midY - sHeight * 0.12, 1, sHeight * 0.24);
-                            else if (hCross) ctx.fillRect(stripe, midY - sHeight * 0.04, 1, sHeight * 0.08);
-                        }
-                    } 
-                    else if (sprite.type === 'ammo') {
-                        if (relX > 0.24 && relX < 0.76) {
-                            ctx.fillStyle = (relX < 0.30 || relX > 0.70) ? '#1b2631' : '#2e4053'; 
-                            ctx.fillRect(stripe, midY - sHeight * 0.16, 1, sHeight * 0.32);
-                            if (relX > 0.30 && relX < 0.70) {
-                                ctx.fillStyle = '#f1c40f';
-                                ctx.fillRect(stripe, midY + sHeight * 0.09, 1, sHeight * 0.04);
-                            }
-                            if (relX > 0.40 && relX < 0.60) {
-                                ctx.fillStyle = '#f39c12'; 
-                                if (Math.floor(stripe / 3) % 2 === 0) {
-                                    ctx.fillRect(stripe, midY - Math.floor(sHeight * 0.06), 1, Math.floor(sHeight * 0.13));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    });
+    // CHIAMATA ALLA FUNZIONE UNIFICATA DI RENDERING SPRITE DI SPRITES.JS
+    if (typeof drawSprites === 'function') {
+        drawSprites(ctx, player, width, height, zBuffer, globalAnimTime);
+    }
 
     drawWeapon();
     drawMinimap();
@@ -604,5 +425,4 @@ function drawVictoryScreen() {
     ctx.fillText("Premi 'R' per ricominciare", width / 2, height / 2 + 50);
 }
 
-// Primo frame di avvio automatico
 update();
