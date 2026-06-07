@@ -1,14 +1,13 @@
 // ==========================================
 // GESTIONE COORTI SPRITE (NEMICI, OGGETTI E BOSS)
-// VERSIONE: OFFICE HORROR UPDATE
 // ==========================================
 
 let enemies = [];
 let items = [];
 
-// Database invariato per mantenere la compatibilità logica
 const levelSpritesDatabase = {
     1: {
+        // PIANO 1: Solo i 3 droni. La Regina apparirà dinamicamente alla loro morte!
         enemies: [
             { x: 14.5, y: 1.5,  alive: true, speed: 0.024, hitFrame: 0, type: 'drone', health: 1 },
             { x: 8.5,  y: 5.5,  alive: true, speed: 0.020, hitFrame: 0, type: 'drone', health: 1 },
@@ -22,11 +21,12 @@ const levelSpritesDatabase = {
         ]
     },
    2: {
+        // PIANO 2: Solo i droni di pattuglia. La Regina apparirà alla fine.
         enemies: [
             { x: 4.5,  y: 3.5,  alive: true, speed: 0.024, hitFrame: 0, type: 'drone', health: 1 },
             { x: 11.5, y: 3.5,  alive: true, speed: 0.024, hitFrame: 0, type: 'drone', health: 1 },
-            { x: 2.5,  y: 13.5, alive: true, speed: 0.028, hitFrame: 0, type: 'drone', health: 1 }, 
-            { x: 13.5, y: 13.5, alive: true, speed: 0.030, hitFrame: 0, type: 'drone', health: 1 }  
+            { x: 2.5,  y: 13.5, alive: true, speed: 0.028, hitFrame: 0, type: 'drone', health: 1 },
+            { x: 13.5, y: 13.5, alive: true, speed: 0.030, hitFrame: 0, type: 'drone', health: 1 }
         ],
         items: [
             { x: 1.5,  y: 5.5,  type: 'medkit', active: true },
@@ -36,6 +36,7 @@ const levelSpritesDatabase = {
         ]
     },
     3: {
+        // PIANO 3: L'arena finale. Il BOSS è presente da subito.
         enemies: [
             { x: 8.5, y: 8.5, alive: true, speed: 0.034, hitFrame: 0, type: 'boss', health: 5 }
         ],
@@ -72,9 +73,7 @@ function respawnItem(item) {
     }, 6000);
 }
 
-// ==========================================
-// CORE RENDERING ENGINE: GRAFICA SPERIMENTALE CANVAS
-// ==========================================
+// Funzione di rendering unificata ripristinata e aggiornata
 function drawSprites(ctx, player, width, height, zBuffer, globalAnimTime) {
     let sprites = [];
     items.forEach(item => { if (item.active) sprites.push({ x: item.x, y: item.y, type: item.type }); });
@@ -96,26 +95,20 @@ function drawSprites(ctx, player, width, height, zBuffer, globalAnimTime) {
         if (transformY > 0) {
             let spriteScreenX = Math.floor((width / 2) * (1 + transformX / transformY));
             
-            // Effetti di oscillazione differenziati
-            let bobbing = (sprite.type === 'medkit' || sprite.type === 'ammo' || sprite.type === 'key') ? Math.sin(globalAnimTime * 1.8) * 8 : 0;
-            let zombieSway = (sprite.type === 'drone') ? Math.sin(globalAnimTime * 1.5) * 3 : 0;
-            let bossSway = (sprite.type === 'boss' || sprite.type === 'queen') ? Math.sin(globalAnimTime * 2.5) * 5 : 0;
+            let bobbing = (sprite.type !== 'drone' && sprite.type !== 'boss' && sprite.type !== 'queen') ? Math.sin(globalAnimTime * 1.8) * 10 : 0;
+            let droneSway = (sprite.type === 'drone' || sprite.type === 'boss' || sprite.type === 'queen') ? Math.sin(globalAnimTime * 2.2) * 6 : 0;
 
-            // Scale dimensionali
-            let scale = 1.0;
-            if (sprite.type === 'boss') scale = 2.0; // Ragno Segretaria enorme
-            if (sprite.type === 'queen') scale = 1.7; // Responsabile imponente
-
+            let scale = (sprite.type === 'boss' || sprite.type === 'queen') ? 1.8 : 1.0;
             let spriteHeight = Math.abs(Math.floor(height / transformY)) * scale;
-            let drawStartY = Math.max(0, -spriteHeight / 2 + height / 2 + bobbing + zombieSway + bossSway);
-            let drawEndY = Math.min(height - 1, spriteHeight / 2 + height / 2 + bobbing + zombieSway + bossSway);
+            let drawStartY = Math.max(0, -spriteHeight / 2 + height / 2 + bobbing + droneSway);
+            let drawEndY = Math.min(height - 1, spriteHeight / 2 + height / 2 + bobbing + droneSway);
 
             let spriteWidth = Math.abs(Math.floor(height / transformY)) * scale;
             let drawStartX = Math.max(0, Math.floor(-spriteWidth / 2 + spriteScreenX));
             let drawEndX = Math.min(width - 1, Math.floor(spriteWidth / 2 + spriteScreenX));
 
-            let sHeight = drawEndY - drawStartY;
             let midY = (drawStartY + drawEndY) / 2;
+            let sHeight = drawEndY - drawStartY;
 
             for (let stripe = drawStartX; stripe < drawEndX; stripe++) {
                 if (transformY < zBuffer[stripe]) {
@@ -229,6 +222,13 @@ function drawSprites(ctx, player, width, height, zBuffer, globalAnimTime) {
                             if (relX > 0.44 && relX < 0.56 && Math.floor(globalAnimTime * 2) % 2 === 0) {
                                 ctx.fillRect(stripe, drawStartY + sHeight * 0.12, 1, sHeight * 0.02);
                             }
+                        }
+                    }
+                    // Mantenuto dal codice originale (Cartella) per compatibilità retroattiva
+                    else if (sprite.type === 'folder') {
+                        if (relX > 0.30 && relX < 0.70) {
+                            ctx.fillStyle = '#2980b9'; 
+                            ctx.fillRect(stripe, midY - sHeight * 0.2, 1, sHeight * 0.4);
                         }
                     }
                     // ------------------------------------------
