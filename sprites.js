@@ -20,13 +20,13 @@ const levelSpritesDatabase = {
             { x: 14.5, y: 7.5, type: 'ammo', active: true }
         ]
     },
-    2: {
+   2: {
         // PIANO 2: Solo i droni di pattuglia. La Regina apparirà alla fine.
         enemies: [
             { x: 4.5,  y: 3.5,  alive: true, speed: 0.024, hitFrame: 0, type: 'drone', health: 1 },
             { x: 11.5, y: 3.5,  alive: true, speed: 0.024, hitFrame: 0, type: 'drone', health: 1 },
-            { x: 2.5,  y: 12.5, alive: true, speed: 0.028, hitFrame: 0, type: 'drone', health: 1 },
-            { x: 13.5, y: 12.5, alive: true, speed: 0.030, hitFrame: 0, type: 'drone', health: 1 }
+            { x: 2.5,  y: 13.5, alive: true, speed: 0.028, hitFrame: 0, type: 'drone', health: 1 }, // Modificato y da 12.5 a 13.5
+            { x: 13.5, y: 13.5, alive: true, speed: 0.030, hitFrame: 0, type: 'drone', health: 1 }  // Modificato y da 12.5 a 13.5
         ],
         items: [
             { x: 1.5,  y: 5.5,  type: 'medkit', active: true },
